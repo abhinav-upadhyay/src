@@ -1,7 +1,7 @@
-#	$NetBSD: files,v 1.1175 2017/06/08 21:00:43 jmcneill Exp $
+#	$NetBSD: files,v 1.1180 2017/07/08 00:54:37 jmcneill Exp $
 #	@(#)files.newconf	7.5 (Berkeley) 5/10/93
 
-version 	20150846
+version 	20170615
 
 #
 # device classes
@@ -344,7 +344,7 @@ define	pckbport_machdep_cnattach
 define	firmload
 
 # speaker devices, attaches to audio or pcppi drivers
-device	spkr
+device	spkr: wsbelldev
 file	dev/spkr.c			spkr
 
 include "dev/files.audio"
@@ -1185,6 +1185,7 @@ define	wsdisplaydev		{[kbdmux = 1]}
 define	wsemuldisplaydev	{[console = -1], [kbdmux = 1]}
 define	wskbddev		{[console = -1], [mux = 1]}
 define	wsmousedev		{[mux = 0]}
+define	wsbelldev		{[console = -1], [mux = 1]}
 define	vcons
 # attribute to pull in raster support
 #
@@ -1239,7 +1240,7 @@ include "dev/wsfb/files.wsfb"
 define	isabus	{ }			# ISA attachment
 define	eisabus	{ }			# EISA attachment
 define	pcibus	{[bus = -1]}		# PCI attachment
-define	tcbus	{ }			# TurboChannel attachment
+define	tcbus	{ }			# TURBOchannel attachment
 define	mcabus	{ }			# MicroChannel attachment
 define	usbus	{ }			# USB attachment
 define	fwbus	{ }			# IEEE 1394 attachment
@@ -1504,6 +1505,9 @@ file	dev/pud/pud_dev.c		pud
 
 # device-mapper driver for LVM
 include "dev/dm/files.dm"
+
+# LED framework
+file	dev/led.c			leds
 
 #
 # File systems

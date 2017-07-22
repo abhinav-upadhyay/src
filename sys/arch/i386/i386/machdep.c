@@ -1,4 +1,4 @@
-/*	$NetBSD: machdep.c,v 1.782 2017/03/24 17:09:36 maxv Exp $	*/
+/*	$NetBSD: machdep.c,v 1.785 2017/07/22 09:01:46 maxv Exp $	*/
 
 /*-
  * Copyright (c) 1996, 1997, 1998, 2000, 2004, 2006, 2008, 2009
@@ -67,7 +67,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.782 2017/03/24 17:09:36 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.785 2017/07/22 09:01:46 maxv Exp $");
 
 #include "opt_beep.h"
 #include "opt_compat_ibcs2.h"
@@ -266,7 +266,6 @@ void (*delay_func)(unsigned int) = i8254_delay;
 void (*initclock_func)(void) = i8254_initclocks;
 #endif
 
-
 /*
  * Size of memory segments, before any memory is stolen.
  */
@@ -275,6 +274,8 @@ int mem_cluster_cnt = 0;
 
 void init386(paddr_t);
 void initgdt(union descriptor *);
+
+static void i386_proc0_pcb_ldt_init(void);
 
 extern int time_adjusted;
 
@@ -481,7 +482,7 @@ cpu_startup(void)
 #endif
 
 	gdt_init();
-	i386_proc0_tss_ldt_init();
+	i386_proc0_pcb_ldt_init();
 
 #ifndef XEN
 	cpu_init_tss(&cpu_info_primary);
@@ -492,18 +493,14 @@ cpu_startup(void)
 }
 
 /*
- * Set up proc0's TSS and LDT.
+ * Set up proc0's PCB and LDT.
  */
-void
-i386_proc0_tss_ldt_init(void)
+static void
+i386_proc0_pcb_ldt_init(void)
 {
-	struct lwp *l;
-	struct pcb *pcb __diagused;
+	struct lwp *l = &lwp0;
+	struct pcb *pcb = lwp_getpcb(l);
 
-	l = &lwp0;
-	pcb = lwp_getpcb(l);
-
-	pmap_kernel()->pm_ldt_sel = GSEL(GLDT_SEL, SEL_KPL);
 	pcb->pcb_cr0 = rcr0() & ~CR0_TS;
 	pcb->pcb_esp0 = uvm_lwp_getuarea(l) + USPACE - 16;
 	pcb->pcb_iopl = SEL_KPL;
@@ -513,7 +510,7 @@ i386_proc0_tss_ldt_init(void)
 	pcb->pcb_dbregs = NULL;
 
 #ifndef XEN
-	lldt(pmap_kernel()->pm_ldt_sel);
+	lldt(GSEL(GLDT_SEL, SEL_KPL));
 #else
 	HYPERVISOR_fpu_taskswitch(1);
 	XENPRINTF(("lwp tss sp %p ss %04x/%04x\n",
@@ -933,7 +930,6 @@ setsegment(struct segment_descriptor *sd, const void *base, size_t limit,
 #define	IDTVEC(name)	__CONCAT(X, name)
 typedef void (vector)(void);
 extern vector IDTVEC(syscall);
-extern vector IDTVEC(osyscall);
 extern vector *IDTVEC(exceptions)[];
 extern vector IDTVEC(svr4_fasttrap);
 void (*svr4_fasttrap_vec)(void) = (void (*)(void))nullop;
@@ -1290,14 +1286,9 @@ init386(paddr_t first_avail)
 #endif /* XEN */
 
 	/* make ldt gates and memory segments */
-	setgate(&ldtstore[LSYS5CALLS_SEL].gd, &IDTVEC(osyscall), 1,
-	    SDT_SYS386CGT, SEL_UPL, GSEL(GCODE_SEL, SEL_KPL));
-
 	ldtstore[LUCODE_SEL] = gdtstore[GUCODE_SEL];
 	ldtstore[LUCODEBIG_SEL] = gdtstore[GUCODEBIG_SEL];
 	ldtstore[LUDATA_SEL] = gdtstore[GUDATA_SEL];
-	ldtstore[LSOL26CALLS_SEL] = ldtstore[LBSDICALLS_SEL] =
-	    ldtstore[LSYS5CALLS_SEL];
 
 #ifndef XEN
 	/* exceptions */

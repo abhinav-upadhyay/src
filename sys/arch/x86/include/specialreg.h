@@ -1,4 +1,4 @@
-/*	$NetBSD: specialreg.h,v 1.98 2017/05/15 04:02:52 msaitoh Exp $	*/
+/*	$NetBSD: specialreg.h,v 1.100 2017/07/11 14:00:15 gson Exp $	*/
 
 /*-
  * Copyright (c) 1991 The Regents of the University of California.
@@ -130,7 +130,7 @@
 #define CPUID_DE	0x00000004	/* has debugging extension */
 #define CPUID_PSE	0x00000008	/* has 4MB page size extension */
 #define CPUID_TSC	0x00000010	/* has time stamp counter */
-#define CPUID_MSR	0x00000020	/* has mode specific registers */
+#define CPUID_MSR	0x00000020	/* has model specific registers */
 #define CPUID_PAE	0x00000040	/* has phys address extension */
 #define CPUID_MCE	0x00000080	/* has machine check exception */
 #define CPUID_CX8	0x00000100	/* has CMPXCHG8B instruction */
@@ -732,6 +732,7 @@
 #define 	EFER_SVME	0x00001000	/* Secure Virtual Machine En. */
 #define 	EFER_LMSLE	0x00002000	/* Long Mode Segment Limit E. */
 #define 	EFER_FFXSR	0x00004000	/* Fast FXSAVE/FXRSTOR En. */
+#define 	EFER_TCE	0x00008000	/* Translation Cache Ext. */
 
 #define MSR_STAR	0xc0000081		/* 32 bit syscall gate addr */
 #define MSR_LSTAR	0xc0000082		/* 64 bit syscall gate addr */

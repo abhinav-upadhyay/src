@@ -59,7 +59,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*$FreeBSD: head/sys/dev/ixgbe/if_ix.c 302384 2016-07-07 03:39:18Z sbruno $*/
-/*$NetBSD: ixgbe.c,v 1.88 2017/06/02 08:16:52 msaitoh Exp $*/
+/*$NetBSD: ixgbe.c,v 1.95 2017/07/03 08:29:58 msaitoh Exp $*/
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -71,6 +71,8 @@
 #include "vlan.h"
 
 #include <sys/cprng.h>
+#include <dev/mii/mii.h>
+#include <dev/mii/miivar.h>
 
 /*********************************************************************
  *  Driver version
@@ -720,6 +722,26 @@ ixgbe_attach(device_t parent, device_t dev, void *aux)
 		/* falls thru */
 	default:
 		break;
+	}
+
+	if (hw->phy.id != 0) {
+		uint16_t id1, id2;
+		int oui, model, rev;
+		const char *descr;
+
+		id1 = hw->phy.id >> 16;
+		id2 = hw->phy.id & 0xffff;
+		oui = MII_OUI(id1, id2);
+		model = MII_MODEL(id2);
+		rev = MII_REV(id2);
+		if ((descr = mii_get_descr(oui, model)) != NULL)
+			aprint_normal_dev(dev,
+			    "PHY: %s (OUI 0x%06x, model 0x%04x), rev. %d\n",
+			    descr, oui, model, rev);
+		else
+			aprint_normal_dev(dev,
+			    "PHY OUI 0x%06x, model 0x%04x, rev. %d\n",
+			    oui, model, rev);
 	}
 
 	/* hw.ix defaults init */
@@ -2063,37 +2085,14 @@ ixgbe_media_status(struct ifnet * ifp, struct ifmediareq * ifmr)
 	** XXX: These need to use the proper media types once
 	** they're added.
 	*/
+	if (layer & IXGBE_PHYSICAL_LAYER_10GBASE_KR)
+		switch (adapter->link_speed) {
+		case IXGBE_LINK_SPEED_10GB_FULL:
 #ifndef IFM_ETH_XTYPE
-	if (layer & IXGBE_PHYSICAL_LAYER_10GBASE_KR)
-		switch (adapter->link_speed) {
-		case IXGBE_LINK_SPEED_10GB_FULL:
 			ifmr->ifm_active |= IFM_10G_SR | IFM_FDX;
-			break;
-		case IXGBE_LINK_SPEED_2_5GB_FULL:
-			ifmr->ifm_active |= IFM_2500_SX | IFM_FDX;
-			break;
-		case IXGBE_LINK_SPEED_1GB_FULL:
-			ifmr->ifm_active |= IFM_1000_CX | IFM_FDX;
-			break;
-		}
-	else if (layer & IXGBE_PHYSICAL_LAYER_10GBASE_KX4
-	    || layer & IXGBE_PHYSICAL_LAYER_1000BASE_KX)
-		switch (adapter->link_speed) {
-		case IXGBE_LINK_SPEED_10GB_FULL:
-			ifmr->ifm_active |= IFM_10G_CX4 | IFM_FDX;
-			break;
-		case IXGBE_LINK_SPEED_2_5GB_FULL:
-			ifmr->ifm_active |= IFM_2500_SX | IFM_FDX;
-			break;
-		case IXGBE_LINK_SPEED_1GB_FULL:
-			ifmr->ifm_active |= IFM_1000_CX | IFM_FDX;
-			break;
-		}
 #else
-	if (layer & IXGBE_PHYSICAL_LAYER_10GBASE_KR)
-		switch (adapter->link_speed) {
-		case IXGBE_LINK_SPEED_10GB_FULL:
 			ifmr->ifm_active |= IFM_10G_KR | IFM_FDX;
+#endif
 			break;
 		case IXGBE_LINK_SPEED_2_5GB_FULL:
 			ifmr->ifm_active |= IFM_2500_KX | IFM_FDX;
@@ -2106,7 +2105,11 @@ ixgbe_media_status(struct ifnet * ifp, struct ifmediareq * ifmr)
 	    || layer & IXGBE_PHYSICAL_LAYER_1000BASE_KX)
 		switch (adapter->link_speed) {
 		case IXGBE_LINK_SPEED_10GB_FULL:
+#ifndef IFM_ETH_XTYPE
+			ifmr->ifm_active |= IFM_10G_CX4 | IFM_FDX;
+#else
 			ifmr->ifm_active |= IFM_10G_KX4 | IFM_FDX;
+#endif
 			break;
 		case IXGBE_LINK_SPEED_2_5GB_FULL:
 			ifmr->ifm_active |= IFM_2500_KX | IFM_FDX;
@@ -2115,7 +2118,6 @@ ixgbe_media_status(struct ifnet * ifp, struct ifmediareq * ifmr)
 			ifmr->ifm_active |= IFM_1000_KX | IFM_FDX;
 			break;
 		}
-#endif
 	
 	/* If nothing is recognized... */
 #if 0
@@ -2151,6 +2153,9 @@ ixgbe_media_change(struct ifnet * ifp)
 	struct ifmedia *ifm = &adapter->media;
 	struct ixgbe_hw *hw = &adapter->hw;
 	ixgbe_link_speed speed = 0;
+	ixgbe_link_speed link_caps = 0;
+	bool negotiate = false;
+	s32 err = IXGBE_NOT_IMPLEMENTED;
 
 	INIT_DEBUGOUT("ixgbe_media_change: begin");
 
@@ -2165,47 +2170,31 @@ ixgbe_media_change(struct ifnet * ifp)
 	** media types of the adapter; ifmedia will take care of
 	** that for us.
 	*/
+	switch (IFM_SUBTYPE(ifm->ifm_media)) {
+		case IFM_AUTO:
+			err = hw->mac.ops.get_link_capabilities(hw, &link_caps,
+			    &negotiate);
+			if (err != IXGBE_SUCCESS) {
+				device_printf(adapter->dev, "Unable to determine "
+				    "supported advertise speeds\n");
+				return (ENODEV);
+			}
+			speed |= link_caps;
+			break;
+		case IFM_10G_T:
+		case IFM_10G_LRM:
+		case IFM_10G_LR:
+		case IFM_10G_TWINAX:
 #ifndef IFM_ETH_XTYPE
-	switch (IFM_SUBTYPE(ifm->ifm_media)) {
-		case IFM_AUTO:
-		case IFM_10G_T:
-			speed |= IXGBE_LINK_SPEED_100_FULL;
-		case IFM_10G_LRM:
 		case IFM_10G_SR: /* KR, too */
-		case IFM_10G_LR:
 		case IFM_10G_CX4: /* KX4 */
-			speed |= IXGBE_LINK_SPEED_1GB_FULL;
-		case IFM_10G_TWINAX:
-			speed |= IXGBE_LINK_SPEED_10GB_FULL;
-			break;
-		case IFM_1000_T:
-			speed |= IXGBE_LINK_SPEED_100_FULL;
-		case IFM_1000_LX:
-		case IFM_1000_SX:
-		case IFM_1000_CX: /* KX */
-			speed |= IXGBE_LINK_SPEED_1GB_FULL;
-			break;
-		case IFM_100_TX:
-			speed |= IXGBE_LINK_SPEED_100_FULL;
-			break;
-		default:
-			goto invalid;
-	}
 #else
-	switch (IFM_SUBTYPE(ifm->ifm_media)) {
-		case IFM_AUTO:
-		case IFM_10G_T:
-			speed |= IXGBE_LINK_SPEED_100_FULL;
-		case IFM_10G_LRM:
 		case IFM_10G_KR:
-		case IFM_10G_LR:
 		case IFM_10G_KX4:
-			speed |= IXGBE_LINK_SPEED_1GB_FULL;
-		case IFM_10G_TWINAX:
+#endif
 			speed |= IXGBE_LINK_SPEED_10GB_FULL;
 			break;
 		case IFM_1000_T:
-			speed |= IXGBE_LINK_SPEED_100_FULL;
 		case IFM_1000_LX:
 		case IFM_1000_SX:
 		case IFM_1000_KX:
@@ -2217,7 +2206,6 @@ ixgbe_media_change(struct ifnet * ifp)
 		default:
 			goto invalid;
 	}
-#endif
 
 	hw->mac.autotry_restart = TRUE;
 	hw->mac.ops.setup_link(hw, speed, TRUE);
@@ -2476,6 +2464,12 @@ ixgbe_update_link_status(struct adapter *adapter)
 				switch (adapter->link_speed) {
 				case IXGBE_LINK_SPEED_10GB_FULL:
 					bpsmsg = "10 Gbps";
+					break;
+				case IXGBE_LINK_SPEED_5GB_FULL:
+					bpsmsg = "5 Gbps";
+					break;
+				case IXGBE_LINK_SPEED_2_5GB_FULL:
+					bpsmsg = "2.5 Gbps";
 					break;
 				case IXGBE_LINK_SPEED_1GB_FULL:
 					bpsmsg = "1 Gbps";
@@ -3280,10 +3274,6 @@ ixgbe_add_media_types(struct adapter *adapter)
 		ADD(AIFM_10G_KX4, 0);
 		ADD(AIFM_10G_KX4 | IFM_FDX, 0);
 	}
-	if (layer & IXGBE_PHYSICAL_LAYER_1000BASE_KX) {
-		ADD(IFM_1000_KX, 0);
-		ADD(IFM_1000_KX | IFM_FDX, 0);
-	}
 #else
 	if (layer & IXGBE_PHYSICAL_LAYER_10GBASE_KR) {
 		device_printf(dev, "Media supported: 10GbaseKR\n");
@@ -3297,13 +3287,11 @@ ixgbe_add_media_types(struct adapter *adapter)
 		ADD(IFM_10G_CX4, 0);
 		ADD(IFM_10G_CX4 | IFM_FDX, 0);
 	}
-	if (layer & IXGBE_PHYSICAL_LAYER_1000BASE_KX) {
-		device_printf(dev, "Media supported: 1000baseKX\n");
-		device_printf(dev, "1000baseKX mapped to 1000baseCX\n");
-		ADD(IFM_1000_CX, 0);
-		ADD(IFM_1000_CX | IFM_FDX, 0);
-	}
 #endif
+	if (layer & IXGBE_PHYSICAL_LAYER_1000BASE_KX) {
+		ADD(IFM_1000_KX, 0);
+		ADD(IFM_1000_KX | IFM_FDX, 0);
+	}
 	if (layer & IXGBE_PHYSICAL_LAYER_1000BASE_BX)
 		device_printf(dev, "Media supported: 1000baseBX\n");
 	/* XXX no ifmedia_set? */
@@ -4733,7 +4721,7 @@ ixgbe_add_device_sysctls(struct adapter *adapter)
 
 	if (sysctl_createv(log, 0, &rnode, &cnode,
 	    CTLFLAG_READWRITE, CTLTYPE_INT,
-	    "ts", SYSCTL_DESCR("Thermal Test"),
+	    "thermal_test", SYSCTL_DESCR("Thermal Test"),
 	    ixgbe_sysctl_thermal_test, 0, (void *)adapter, 0, CTL_CREATE, CTL_EOL) != 0)
 		aprint_error_dev(dev, "could not create sysctl\n");
 
@@ -5517,8 +5505,8 @@ ixgbe_sysctl_thermal_test(SYSCTLFN_ARGS)
 {
 	struct sysctlnode node = *rnode;
 	struct adapter	*adapter = (struct adapter *)node.sysctl_data;
-	int		error, fire = 0;
 	struct ixgbe_hw *hw;
+	int error, fire = 0;
 
 	hw = &adapter->hw;
 

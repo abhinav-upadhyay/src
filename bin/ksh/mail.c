@@ -1,4 +1,4 @@
-/*	$NetBSD: mail.c,v 1.5 2006/01/15 18:16:30 jschauma Exp $	*/
+/*	$NetBSD: mail.c,v 1.8 2017/06/30 04:41:19 kamil Exp $	*/
 
 /*
  * Mailbox checking code by Robert J. Gibson, adapted for PD ksh by
@@ -7,16 +7,17 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: mail.c,v 1.5 2006/01/15 18:16:30 jschauma Exp $");
+__RCSID("$NetBSD: mail.c,v 1.8 2017/06/30 04:41:19 kamil Exp $");
 #endif
-
 
 #include "config.h"
 
 #ifdef KSH
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <time.h>
+
 #include "sh.h"
-#include "ksh_stat.h"
-#include "ksh_time.h"
 
 #define MBMESSAGE	"You have mail in $_"
 
@@ -193,7 +194,7 @@ mbox_t	*mbp;
 	struct tbl	*vp;
 
 	/* Ignore setstr errors here (arbitrary) */
-	setstr((vp = local("_", FALSE)), mbp->mb_path, KSH_RETURN_ERROR);
+	setstr((vp = local("_", false)), mbp->mb_path, KSH_RETURN_ERROR);
 
 	shellf("%s\n", substitute(mbp->mb_msg ? mbp->mb_msg : MBMESSAGE, 0));
 

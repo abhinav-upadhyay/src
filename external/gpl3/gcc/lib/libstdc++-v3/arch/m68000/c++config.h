@@ -665,7 +665,7 @@ namespace std
 #define _GLIBCXX_HAVE_FCNTL_H 1
 
 /* Define to 1 if you have the <fenv.h> header file. */
-/* #undef _GLIBCXX_HAVE_FENV_H */
+#define _GLIBCXX_HAVE_FENV_H 1
 
 /* Define to 1 if you have the `finite' function. */
 #define _GLIBCXX_HAVE_FINITE 1
@@ -1203,7 +1203,7 @@ namespace std
 /* #undef _GLIBCXX_HAVE__TANL */
 
 /* Define to 1 if you have the `__cxa_thread_atexit_impl' function. */
-/* #undef _GLIBCXX_HAVE___CXA_THREAD_ATEXIT_IMPL */
+#define _GLIBCXX_HAVE___CXA_THREAD_ATEXIT_IMPL 1
 
 /* Define as const if the declaration of iconv() needs const. */
 #define _GLIBCXX_ICONV_CONST const
@@ -1328,7 +1328,7 @@ namespace std
 
 /* Define if C99 functions in <fenv.h> should be imported in <tr1/cfenv> in
    namespace std::tr1. */
-/* #undef _GLIBCXX_USE_C99_FENV_TR1 */
+#define _GLIBCXX_USE_C99_FENV_TR1 1
 
 /* Define if C99 functions in <inttypes.h> should be imported in
    <tr1/cinttypes> in namespace std::tr1. */

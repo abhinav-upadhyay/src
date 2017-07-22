@@ -1,4 +1,4 @@
-/*	$NetBSD: misc.c,v 1.17 2017/05/03 00:41:34 christos Exp $	*/
+/*	$NetBSD: misc.c,v 1.23 2017/06/30 04:41:19 kamil Exp $	*/
 
 /*
  * Miscellaneous functions
@@ -6,15 +6,13 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: misc.c,v 1.17 2017/05/03 00:41:34 christos Exp $");
+__RCSID("$NetBSD: misc.c,v 1.23 2017/06/30 04:41:19 kamil Exp $");
 #endif
 
 
 #include "sh.h"
 #include <ctype.h>	/* for FILECHCONV */
-#ifdef HAVE_LIMITS_H
-# include <limits.h>
-#endif
+#include <limits.h>
 
 #ifndef UCHAR_MAX
 # define UCHAR_MAX	0xFF
@@ -323,14 +321,10 @@ change_flag(f, what, newval)
 #endif /* EDIT */
 	/* Turning off -p? */
 	if (f == FPRIVILEGED && oldval && !newval) {
-#ifdef OS2
-		;
-#else /* OS2 */
 		seteuid(ksheuid = getuid());
 		setuid(ksheuid);
 		setegid(getgid());
 		setgid(getgid());
-#endif /* OS2 */
 	} else if (f == FPOSIX && newval) {
 #ifdef BRACE_EXPAND
 		Flag(FBRACEEXPAND) = 0
@@ -467,7 +461,7 @@ parse_args(argv, what, setargsp)
 		*setargsp = !arrayset && ((go.info & GI_MINUSMINUS)
 					  || argv[go.optind]);
 
-	if (arrayset && (!*array || *skip_varname(array, FALSE))) {
+	if (arrayset && (!*array || *skip_varname(array, false))) {
 		bi_errorf("%s: is not an identifier", array);
 		return -1;
 	}
@@ -1016,7 +1010,7 @@ ksh_getopt(argv, go, options)
 			go->buf[0] = c;
 			go->optarg = go->buf;
 		} else {
-			warningf(TRUE, "%s%s-%c: unknown option",
+			warningf(true, "%s%s-%c: unknown option",
 				(go->flags & GF_NONAME) ? "" : argv[0],
 				(go->flags & GF_NONAME) ? "" : ": ", c);
 			if (go->flags & GF_ERROR)
@@ -1042,7 +1036,7 @@ ksh_getopt(argv, go, options)
 				go->optarg = go->buf;
 				return ':';
 			}
-			warningf(TRUE, "%s%s-`%c' requires argument",
+			warningf(true, "%s%s-`%c' requires argument",
 				(go->flags & GF_NONAME) ? "" : argv[0],
 				(go->flags & GF_NONAME) ? "" : ": ", c);
 			if (go->flags & GF_ERROR)
@@ -1288,25 +1282,6 @@ reset_nonblock(fd)
 # define MAXPATHLEN PATH
 #endif /* MAXPATHLEN */
 
-#ifdef HPUX_GETWD_BUG
-# include "ksh_dir.h"
-
-/*
- * Work around bug in hpux 10.x C library - getwd/getcwd dump core
- * if current directory is not readable.  Done in macro 'cause code
- * is needed in GETWD and GETCWD cases.
- */
-# define HPUX_GETWD_BUG_CODE \
-	{ \
-	    DIR *d = ksh_opendir("."); \
-	    if (!d) \
-		return (char *) 0; \
-	    closedir(d); \
-	}
-#else /* HPUX_GETWD_BUG */
-# define HPUX_GETWD_BUG_CODE
-#endif /* HPUX_GETWD_BUG */
-
 /* Like getcwd(), except bsize is ignored if buf is 0 (MAXPATHLEN is used) */
 char *
 ksh_get_wd(buf, bsize)
@@ -1316,9 +1291,6 @@ ksh_get_wd(buf, bsize)
 #ifdef HAVE_GETCWD
 	char *b;
 	char *ret;
-
-	/* Before memory allocated */
-	HPUX_GETWD_BUG_CODE
 
 	/* Assume getcwd() available */
 	if (!buf) {
@@ -1341,9 +1313,6 @@ ksh_get_wd(buf, bsize)
 	extern char *getwd ARGS((char *));
 	char *b;
 	int len;
-
-	/* Before memory allocated */
-	HPUX_GETWD_BUG_CODE
 
 	if (buf && bsize > MAXPATHLEN)
 		b = buf;

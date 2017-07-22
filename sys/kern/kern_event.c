@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_event.c,v 1.91 2017/05/11 23:50:17 christos Exp $	*/
+/*	$NetBSD: kern_event.c,v 1.93 2017/07/03 00:53:33 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.
@@ -58,7 +58,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_event.c,v 1.91 2017/05/11 23:50:17 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_event.c,v 1.93 2017/07/03 00:53:33 riastradh Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -141,7 +141,7 @@ extern const struct filterops sig_filtops;
  * These should be listed in the numeric order of the EVFILT_* defines.
  * If filtops is NULL, the filter isn't implemented in NetBSD.
  * End of list is when name is NULL.
- * 
+ *
  * Note that 'refcnt' is meaningless for built-in filters.
  */
 struct kfilter {
@@ -1020,9 +1020,9 @@ kqueue_register(struct kqueue *kq, struct kevent *kev)
 			KERNEL_UNLOCK_ONE(NULL);	/* XXXSMP */
 			if (error != 0) {
 #ifdef DIAGNOSTIC
-				
-				printf("%s: event not supported for file type"
-				    " %d (error %d)\n", __func__, kn->kn_obj ?
+				printf("%s: event type %d not supported for "
+				    "file type %d (error %d)\n", __func__,
+				    kn->kn_filter, kn->kn_obj ?
 				    ((file_t *)kn->kn_obj)->f_type : -1, error);
 #endif
 				/* knote_detach() drops fdp->fd_lock */
@@ -1180,7 +1180,7 @@ kqueue_scan(file_t *fp, size_t maxevents, struct kevent *ulistp,
 	} else {
 		/* no timeout, wait forever */
 		timeout = 0;
-	}	
+	}
 
 	memset(&morker, 0, sizeof(morker));
 	marker = &morker;
@@ -1204,9 +1204,18 @@ kqueue_scan(file_t *fp, size_t maxevents, struct kevent *ulistp,
 					error = 0;
 			}
 		}
+		mutex_spin_exit(&kq->kq_lock);
 	} else {
 		/* mark end of knote list */
 		TAILQ_INSERT_TAIL(&kq->kq_head, marker, kn_tqe);
+
+		/*
+		 * Acquire the fdp->fd_lock interlock to avoid races with
+		 * file creation/destruction from other threads.
+		 */
+		mutex_spin_exit(&kq->kq_lock);
+		mutex_enter(&fdp->fd_lock);
+		mutex_spin_enter(&kq->kq_lock);
 
 		while (count != 0) {
 			kn = TAILQ_FIRST(&kq->kq_head);	/* get next knote */
@@ -1218,6 +1227,7 @@ kqueue_scan(file_t *fp, size_t maxevents, struct kevent *ulistp,
 					    (timeout = gettimeleft(&ats,
 					    &sleepts)) <= 0))
 						goto done;
+					mutex_exit(&fdp->fd_lock);
 					goto retry;
 				}
 				/* someone else's marker. */
@@ -1239,6 +1249,7 @@ kqueue_scan(file_t *fp, size_t maxevents, struct kevent *ulistp,
 				KASSERT(kn->kn_fop != NULL);
 				KASSERT(kn->kn_fop->f_event != NULL);
 				KERNEL_LOCK(1, NULL);		/* XXXSMP */
+				KASSERT(mutex_owned(&fdp->fd_lock));
 				rv = (*kn->kn_fop->f_event)(kn, 0);
 				KERNEL_UNLOCK_ONE(NULL);	/* XXXSMP */
 				mutex_spin_enter(&kq->kq_lock);
@@ -1261,10 +1272,10 @@ kqueue_scan(file_t *fp, size_t maxevents, struct kevent *ulistp,
 			nkev++;
 			if (kn->kn_flags & EV_ONESHOT) {
 				/* delete ONESHOT events after retrieval */
-				mutex_spin_exit(&kq->kq_lock);
-				mutex_enter(&fdp->fd_lock);
 				kn->kn_status &= ~KN_BUSY;
+				mutex_spin_exit(&kq->kq_lock);
 				knote_detach(kn, fdp, true);
+				mutex_enter(&fdp->fd_lock);
 				mutex_spin_enter(&kq->kq_lock);
 			} else if (kn->kn_flags & EV_CLEAR) {
 				/* clear state after retrieval */
@@ -1286,9 +1297,11 @@ kqueue_scan(file_t *fp, size_t maxevents, struct kevent *ulistp,
 			if (nkev == kevcnt) {
 				/* do copyouts in kevcnt chunks */
 				mutex_spin_exit(&kq->kq_lock);
+				mutex_exit(&fdp->fd_lock);
 				error = (*keops->keo_put_events)
 				    (keops->keo_private,
 				    kevbuf, ulistp, nevents, nkev);
+				mutex_enter(&fdp->fd_lock);
 				mutex_spin_enter(&kq->kq_lock);
 				nevents += nkev;
 				nkev = 0;
@@ -1301,9 +1314,10 @@ kqueue_scan(file_t *fp, size_t maxevents, struct kevent *ulistp,
 				break;
 			}
 		}
-	}
  done:
- 	mutex_spin_exit(&kq->kq_lock);
+		mutex_spin_exit(&kq->kq_lock);
+		mutex_exit(&fdp->fd_lock);
+	}
 	if (nkev != 0) {
 		/* copyout remaining events */
 		error = (*keops->keo_put_events)(keops->keo_private,
@@ -1599,7 +1613,7 @@ again:
 	mutex_spin_exit(&kq->kq_lock);
 
 	mutex_exit(&fdp->fd_lock);
-	if (kn->kn_fop->f_isfd)		
+	if (kn->kn_fop->f_isfd)
 		fd_putfile(kn->kn_id);
 	atomic_dec_uint(&kn->kn_kfilter->refcnt);
 	kmem_free(kn, sizeof(*kn));

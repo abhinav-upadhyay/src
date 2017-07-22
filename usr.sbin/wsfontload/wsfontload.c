@@ -1,4 +1,4 @@
-/* $NetBSD: wsfontload.c,v 1.18 2013/04/05 03:18:26 dholland Exp $ */
+/* $NetBSD: wsfontload.c,v 1.21 2017/06/23 18:40:03 macallan Exp $ */
 
 /*
  * Copyright (c) 1999
@@ -33,6 +33,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <err.h>
 
 #include <dev/wscons/wsconsio.h>
@@ -134,9 +135,12 @@ main(int argc, char **argv)
 {
 	const char *wsdev;
 	struct wsdisplay_font f;
+	struct stat st;
 	int c, res, wsfd, ffd, verbose = 0;
 	size_t len;
+	int use_embedded_name = 1;
 	void *buf;
+	char nbuf[65];
 
 	wsdev = DEFDEV;
 	f.fontwidth = DEFWIDTH;
@@ -167,6 +171,7 @@ main(int argc, char **argv)
 			break;
 		case 'N':
 			f.name = optarg;
+			use_embedded_name = 0;
 			break;
 		case 'b':
 			f.bitorder = WSDISPLAY_FONTORDER_R2L;
@@ -205,6 +210,41 @@ main(int argc, char **argv)
 	if (!f.stride)
 		f.stride = (f.fontwidth + 7) / 8;
 	len = f.fontheight * f.numchars * f.stride;
+	if ((ffd != 0) && (fstat(ffd, &st) == 0)) {
+		if ((off_t)len != st.st_size) {
+			uint32_t foo = 0;
+			char b[65];
+			len = st.st_size;
+			/* read header */
+			read(ffd, b, 4);
+			if (strncmp(b, "WSFT", 4) != 0)
+				errx(1, "invalid wsf file ");
+			read(ffd, b, 64);
+			if (use_embedded_name) {
+				b[64] = 0;
+				strcpy(nbuf, b);
+				f.name = nbuf;
+			}
+			read(ffd, &foo, 4);
+			f.firstchar = le32toh(foo);
+			read(ffd, &foo, 4);
+			f.numchars = le32toh(foo);
+			read(ffd, &foo, 4);
+			f.encoding = le32toh(foo);
+			read(ffd, &foo, 4);
+			f.fontwidth = le32toh(foo);
+			read(ffd, &foo, 4);
+			f.fontheight = le32toh(foo);
+			read(ffd, &foo, 4);
+			f.stride = le32toh(foo);
+			read(ffd, &foo, 4);
+			f.bitorder = le32toh(foo);
+			read(ffd, &foo, 4);
+			f.byteorder = le32toh(foo);
+			len = f.numchars * f.fontheight * f.stride;
+		}
+	}
+
 	if (!len)
 		errx(1, "invalid font size");
 

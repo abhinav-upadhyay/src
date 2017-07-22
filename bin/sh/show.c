@@ -1,4 +1,4 @@
-/*	$NetBSD: show.c,v 1.44 2017/06/08 13:17:00 kre Exp $	*/
+/*	$NetBSD: show.c,v 1.47 2017/06/30 23:00:40 kre Exp $	*/
 
 /*-
  * Copyright (c) 1991, 1993
@@ -39,7 +39,7 @@
 #if 0
 static char sccsid[] = "@(#)show.c	8.3 (Berkeley) 5/4/95";
 #else
-__RCSID("$NetBSD: show.c,v 1.44 2017/06/08 13:17:00 kre Exp $");
+__RCSID("$NetBSD: show.c,v 1.47 2017/06/30 23:00:40 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -298,9 +298,14 @@ trargs(char **ap)
 		trstring(*ap++);
 		if (*ap)
 			trace_putc(' ', tracetfile);
-		else
-			trace_putc('\n', tracetfile);
 	}
+	trace_putc('\n', tracetfile);
+}
+
+void
+trargstr(union node *n)
+{
+	sharg(n, tracetfile);
 }
 
 
@@ -934,6 +939,7 @@ trace_id(TFILE *tf)
 	char indent[16];
 	char *p;
 	int lno;
+	char c;
 
 	if (DFlags & DBG_NEST) {
 		if ((unsigned)ShNest >= sizeof indent - 1) {
@@ -962,23 +968,24 @@ trace_id(TFILE *tf)
 	else
 		lno = line_number;
 
+	c = ((i = getpid()) == tf->pid) ? ':' : '=';
+
 	if (DFlags & DBG_PID) {
-		i = getpid();
 		if (DFlags & DBG_LINE)
-			(void) asprintf(&p, "%5d%c%s\t%4d%c@\t", i,
-			    i == tf->pid ? ':' : '=', indent, lno, parsing?'-':'+');
+			(void) asprintf(&p, "%5d%c%s\t%4d%c@\t", i, c,
+			    indent, lno, parsing?'-':'+');
 		else
-			(void) asprintf(&p, "%5d%c%s\t", i,
-			    i == tf->pid ? ':' : '=', indent);
+			(void) asprintf(&p, "%5d%c%s\t", i, c, indent);
 		return p;
 	} else if (DFlags & DBG_NEST) {
 		if (DFlags & DBG_LINE)
-			(void) asprintf(&p, "%s\t%4d @\t", indent, lno);
+			(void) asprintf(&p, "%c%s\t%4d%c@\t", c, indent, lno,
+			    parsing?'-':'+');
 		else
-			(void) asprintf(&p, "%s\t", indent);
+			(void) asprintf(&p, "%c%s\t", c, indent);
 		return p;
 	} else if (DFlags & DBG_LINE) {
-		(void) asprintf(&p, "%4d @\t", lno);
+		(void) asprintf(&p, "%c%4d%c@\t", c, lno, parsing?'-':'+');
 		return p;
 	}
 	return NULL;

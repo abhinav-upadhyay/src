@@ -1,4 +1,4 @@
-/*	$NetBSD: h_ioctl.c,v 1.1 2017/06/09 06:09:02 knakahara Exp $	*/
+/*	$NetBSD: h_ioctl.c,v 1.3 2017/06/14 21:43:02 christos Exp $	*/
 
 /*-
  * Copyright (c) 2017 Internet Initiative Japan Inc.
@@ -57,6 +57,8 @@ unsigned char aes_cipher[AES_CIPHER_LEN] =
 { 0xe3, 0x53, 0x77, 0x9c, 0x10, 0x79, 0xae, 0xb8,
   0x27, 0x08, 0x94, 0x2d, 0xbe, 0x77, 0x18, 0x1a, };
 
+#define COUNT 2
+
 /*
  * CRIOGET is deprecated.
  */
@@ -69,11 +71,10 @@ static int
 test_ngsession(int fd)
 {
 	int ret;
-	int cs_count = 2;
 	struct crypt_sgop sg;
-	struct session_n_op css[cs_count];
+	struct session_n_op css[COUNT];
 
-	for (int i = 0; i < cs_count; i++) {
+	for (size_t i = 0; i < COUNT; i++) {
 		struct session_n_op *cs = &css[i];
 
 		memset(cs, 0, sizeof(*cs));
@@ -82,7 +83,7 @@ test_ngsession(int fd)
 		cs->key = __UNCONST(&aes_key);
 	}
 	memset(&sg, 0, sizeof(sg));
-	sg.count = cs_count;
+	sg.count = COUNT;
 	sg.sessions = css;
 
 	ret = ioctl(fd, CIOCNGSESSION, &sg);
@@ -100,13 +101,12 @@ static int
 test_nfsession(int fd)
 {
 	int ret;
-	int sid_count = 2;
 	struct crypt_sfop sf;
-	u_int32_t sids[sid_count];
+	u_int32_t sids[COUNT];
 
 	memset(sids, 0, sizeof(sids));
 	memset(&sf, 0, sizeof(sf));
-	sf.count = sid_count;
+	sf.count = COUNT;
 	sf.sesid = sids;
 
 	ret = ioctl(fd, CIOCNFSESSION, &sf);
@@ -124,11 +124,10 @@ static int
 test_ncryptm(int fd)
 {
 	int ret;
-	int cs_count = 2;
 	struct crypt_mop mop;
-	struct crypt_n_op css[cs_count];
+	struct crypt_n_op css[COUNT];
 
-	for (int i = 0; i < cs_count; i++) {
+	for (size_t i = 0; i < COUNT; i++) {
 		struct crypt_n_op *cs;
 		cs = &css[i];
 
@@ -139,7 +138,7 @@ test_ncryptm(int fd)
 	}
 
 	memset(&mop, 0, sizeof(mop));
-	mop.count = cs_count;
+	mop.count = COUNT;
 	mop.reqs = css;
 
 	ret = ioctl(fd, CIOCNCRYPTM, &mop);
@@ -157,15 +156,13 @@ static int
 test_ncryptretm(int fd)
 {
 	int ret;
-	int req_count = 2;
 	struct session_op cs;
 
 	struct crypt_mop mop;
-	struct crypt_n_op cnos[req_count];
-	unsigned char cno_dst[req_count][AES_CIPHER_LEN];
-
+	struct crypt_n_op cnos[COUNT];
+	unsigned char cno_dst[COUNT][AES_CIPHER_LEN];
 	struct cryptret cret;
-	struct crypt_result crs[req_count];
+	struct crypt_result crs[COUNT];
 
 	memset(&cs, 0, sizeof(cs));
 	cs.cipher = CRYPTO_AES_CBC;
@@ -177,7 +174,7 @@ test_ncryptretm(int fd)
 		return ret;
 	}
 
-	for (int i = 0; i < req_count; i++) {
+	for (size_t i = 0; i < COUNT; i++) {
 		struct crypt_n_op *cno = &cnos[i];
 
 		memset(cno, 0, sizeof(*cno));
@@ -190,13 +187,13 @@ test_ncryptretm(int fd)
 	}
 
 	memset(&mop, 0, sizeof(mop));
-	mop.count = req_count;
+	mop.count = COUNT;
 	mop.reqs = cnos;
 	ret = ioctl(fd, CIOCNCRYPTM, &mop);
 	if (ret < 0)
 		fprintf(stderr, "failed: CIOCNCRYPTM\n");
 
-	for (int i = 0; i < req_count; i++) {
+	for (size_t i = 0; i < COUNT; i++) {
 		struct crypt_result *cr = &crs[i];
 
 		memset(cr, 0, sizeof(*cr));
@@ -204,7 +201,7 @@ test_ncryptretm(int fd)
 	}
 
 	memset(&cret, 0, sizeof(cret));
-	cret.count = req_count;
+	cret.count = COUNT;
 	cret.results = crs;
 	ret = ioctl(fd, CIOCNCRYPTRETM, &cret);
 	if (ret < 0)

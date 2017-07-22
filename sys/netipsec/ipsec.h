@@ -1,4 +1,4 @@
-/*	$NetBSD: ipsec.h,v 1.50 2017/06/02 03:41:20 ozaki-r Exp $	*/
+/*	$NetBSD: ipsec.h,v 1.56 2017/07/21 04:55:36 ozaki-r Exp $	*/
 /*	$FreeBSD: /usr/local/www/cvsroot/FreeBSD/src/sys/netipsec/ipsec.h,v 1.2.4.2 2004/02/14 22:23:23 bms Exp $	*/
 /*	$KAME: ipsec.h,v 1.53 2001/11/20 08:32:38 itojun Exp $	*/
 
@@ -110,7 +110,6 @@ struct ipsecrequest {
 				/* if __ss_len == 0 then no address specified.*/
 	u_int level;		/* IPsec level defined below. */
 
-	struct secasvar *sav;	/* place holder of SA for use */
 	struct secpolicy *sp;	/* back pointer to SP */
 };
 
@@ -267,8 +266,6 @@ void ipsec_pcbconn (struct inpcbpolicy *);
 void ipsec_pcbdisconn (struct inpcbpolicy *);
 void ipsec_invalpcbcacheall (void);
 
-struct tdb_ident;
-struct secpolicy *ipsec_getpolicy (const struct tdb_ident*, u_int);
 struct inpcb;
 struct secpolicy *ipsec4_checkpolicy (struct mbuf *, u_int, u_int,
 	int *, struct inpcb *);
@@ -339,11 +336,11 @@ void *ah4_ctlinput(int, const struct sockaddr *, void *);
 struct m_tag;
 void ipsec4_common_input(struct mbuf *m, ...);
 int ipsec4_common_input_cb(struct mbuf *, struct secasvar *,
-			int, int, struct m_tag *);
-int ipsec4_process_packet(struct mbuf *, struct ipsecrequest *);
-int ipsec_process_done (struct mbuf *, struct ipsecrequest *);
+			int, int);
+int ipsec4_process_packet(struct mbuf *, struct ipsecrequest *, u_long *);
+int ipsec_process_done(struct mbuf *, struct ipsecrequest *, struct secasvar *);
 #define ipsec_indone(m)	\
-	(m_tag_find((m), PACKET_TAG_IPSEC_IN_DONE, NULL) != NULL)
+	((m->m_flags & M_AUTHIPHDR) || (m->m_flags & M_DECRYPTED))
 
 #define ipsec_outdone(m) \
 	(m_tag_find((m), PACKET_TAG_IPSEC_OUT_DONE, NULL) != NULL)

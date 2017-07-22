@@ -1,4 +1,4 @@
-/* $NetBSD: siisata_pci.c,v 1.14 2016/07/14 04:19:27 msaitoh Exp $ */
+/* $NetBSD: siisata_pci.c,v 1.16 2017/06/21 22:48:05 jdolecek Exp $ */
 
 /*
  * Copyright (c) 2006 Manuel Bouyer.
@@ -51,7 +51,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: siisata_pci.c,v 1.14 2016/07/14 04:19:27 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: siisata_pci.c,v 1.16 2017/06/21 22:48:05 jdolecek Exp $");
 
 #include <sys/types.h>
 #include <sys/malloc.h>
@@ -92,6 +92,12 @@ static const struct siisata_pci_board siisata_pci_boards[] = {
 	{
 		.spb_vend = PCI_VENDOR_CMDTECH,
 		.spb_prod = PCI_PRODUCT_CMDTECH_3132,
+		.spb_port = 2,
+		.spb_chip = 3132,
+	},
+	{
+		.spb_vend = PCI_VENDOR_CMDTECH,
+		.spb_prod = PCI_PRODUCT_CMDTECH_AAR_1220SA,
 		.spb_port = 2,
 		.spb_chip = 3132,
 	},
@@ -211,8 +217,8 @@ siisata_pci_attach(device_t parent, device_t self, void *aux)
 	}
 	intrstr = pci_intr_string(pa->pa_pc, intrhandle, intrbuf,
 	    sizeof(intrbuf));
-	psc->sc_ih = pci_intr_establish(pa->pa_pc, intrhandle,
-	    IPL_BIO, siisata_intr, sc);
+	psc->sc_ih = pci_intr_establish_xname(pa->pa_pc, intrhandle,
+	    IPL_BIO, siisata_intr, sc, device_xname(self));
 	if (psc->sc_ih == NULL) {
 		bus_space_unmap(sc->sc_grt, sc->sc_grh, grsize);
 		bus_space_unmap(sc->sc_prt, sc->sc_prh, prsize);

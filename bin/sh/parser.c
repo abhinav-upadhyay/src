@@ -1,4 +1,4 @@
-/*	$NetBSD: parser.c,v 1.137 2017/06/08 22:10:39 kre Exp $	*/
+/*	$NetBSD: parser.c,v 1.141 2017/07/03 20:16:44 kre Exp $	*/
 
 /*-
  * Copyright (c) 1991, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)parser.c	8.7 (Berkeley) 5/16/95";
 #else
-__RCSID("$NetBSD: parser.c,v 1.137 2017/06/08 22:10:39 kre Exp $");
+__RCSID("$NetBSD: parser.c,v 1.141 2017/07/03 20:16:44 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -74,34 +74,34 @@ __RCSID("$NetBSD: parser.c,v 1.137 2017/06/08 22:10:39 kre Exp $");
 #define OPENBRACE '{'
 #define CLOSEBRACE '}'
 
-
-struct heredoc {
-	struct heredoc *next;	/* next here document in list */
+struct HereDoc {
+	struct HereDoc *next;	/* next here document in list */
 	union node *here;		/* redirection node */
 	char *eofmark;		/* string indicating end of input */
 	int striptabs;		/* if set, strip leading tabs */
 	int startline;		/* line number where << seen */
 };
 
+MKINIT struct parse_state parse_state;
+union parse_state_p psp = { .c_current_parser = &parse_state };
 
-
-static int noalias = 0;		/* when set, don't handle aliases */
-struct heredoc *heredoclist;	/* list of here documents to read */
-int parsebackquote;		/* nonzero if we are inside backquotes */
-int doprompt;			/* if set, prompt the user */
-int needprompt;			/* true if interactive and at start of line */
-int lasttoken;			/* last token read */
-MKINIT int tokpushback;		/* last token pushed back */
-char *wordtext;			/* text of last word returned by readtoken */
-MKINIT int checkkwd;		/* 1 == check for kwds, 2 == also eat newlines */
-struct nodelist *backquotelist;
-union node *redirnode;
-struct heredoc *heredoc;
-int quoteflag;			/* set if (part of) last token was quoted */
-int startlinno;			/* line # where last token started */
-int funclinno;			/* line # where the current function started */
-int elided_nl;			/* count of \ \n (deleted \n's) we have seen */
-
+static const struct parse_state init_parse_state = {	/* all 0's ... */
+	.ps_noalias = 0,
+	.ps_heredoclist = NULL,
+	.ps_parsebackquote = 0,
+	.ps_doprompt = 0,
+	.ps_needprompt = 0,
+	.ps_lasttoken = 0,
+	.ps_tokpushback = 0,
+	.ps_wordtext = NULL,
+	.ps_checkkwd = 0,
+	.ps_redirnode = NULL,
+	.ps_heredoc = NULL,
+	.ps_quoteflag = 0,
+	.ps_startlinno = 0,
+	.ps_funclinno = 0,
+	.ps_elided_nl = 0,
+};
 
 STATIC union node *list(int, int);
 STATIC union node *andor(void);
@@ -121,7 +121,6 @@ STATIC void synexpect(int, const char *) __dead;
 STATIC void synerror(const char *) __dead;
 STATIC void setprompt(int);
 STATIC int pgetc_linecont(void);
-
 
 static const char EOFhere[] = "EOF reading here (<<) document";
 
@@ -479,6 +478,12 @@ command(void)
 		 * paragraph shows one case is required, but the "Grammar"
 		 * section shows a grammar that explicitly allows the no
 		 * case option.
+		 *
+		 * The standard also says (section 2.10):
+		 *   This formal syntax shall take precedence over the
+		 *   preceding text syntax description.
+		 * ie: the "Grammar" section wins.  The text is just
+		 * a rough guide (introduction to the common case.)
 		 */
 		while (lasttoken != TESAC) {
 			*cpp = cp = stalloc(sizeof(struct nclist));
@@ -758,8 +763,8 @@ parsefname(void)
 	if (readtoken() != TWORD)
 		synexpect(-1, 0);
 	if (n->type == NHERE) {
-		struct heredoc *here = heredoc;
-		struct heredoc *p;
+		struct HereDoc *here = heredoc;
+		struct HereDoc *p;
 
 		if (quoteflag == 0)
 			n->type = NXHERE;
@@ -825,7 +830,10 @@ checkend(int c, char * const eofmark, const int striptabs)
 		char *q;
 
 		for (q = eofmark + 1; c2 = pgetc(), *q != '\0' && c2 == *q; q++)
-			;
+			if (c2 == '\n') {
+				plinno++;
+				needprompt = doprompt;
+			}
 		if ((c2 == PEOF || c2 == '\n') && *q == '\0') {
 			c = PEOF;
 			if (c2 == '\n') {
@@ -893,13 +901,13 @@ slurp_heredoc(char *const eofmark, const int striptabs, const int sq)
 			 * not suppress the newline (the \ quotes itself)
 			 */
 			if (c == '\\') {		/* A backslash */
+				STPUTC(c, out);
 				c = pgetc();		/* followed by */
 				if (c == '\n') {	/* a newline?  */
-					/*XXX CTLNONL ?? XXX*/
+					STPUTC(c, out);
 					plinno++;
-					continue;	/*    :drop both */
+					continue;	/* don't break */
 				}
-				STPUTC('\\', out);	/* else keep \ */
 			}
 			STPUTC(c, out);			/* keep the char */
 			if (c == '\n') {		/* at end of line */
@@ -945,7 +953,7 @@ insert_elided_nl(char *str)
 STATIC void
 readheredocs(void)
 {
-	struct heredoc *here;
+	struct HereDoc *here;
 	union node *n;
 	int line, l;
 
@@ -980,6 +988,8 @@ readheredocs(void)
 		 * Now "parse" here docs that have unquoted eofmarkers.
 		 */
 		setinputstring(wordtext, 1, line);
+		VTRACE(DBG_PARSE, ("Reprocessing %d line here doc from %d\n",
+			l, line));
 		readtoken1(pgetc(), DQSYNTAX, 1);
 		n->narg.text = wordtext;
 		n->narg.backquote = backquotelist;
@@ -1007,7 +1017,7 @@ readtoken(void)
 #endif
 	struct alias *ap;
 
-	top:
+ top:
 	t = xxreadtoken();
 
 	if (checkkwd) {
@@ -1040,6 +1050,9 @@ readtoken(void)
 			}
 			if (!noalias &&
 			    (ap = lookupalias(wordtext, 1)) != NULL) {
+				VTRACE(DBG_PARSE,
+				    ("alias '%s' recognized -> <:%s:>\n",
+				    wordtext, ap->val));
 				pushstring(ap->val, strlen(ap->val), ap);
 				checkkwd = savecheckkwd;
 				goto top;
@@ -1341,7 +1354,7 @@ cleanup_state_stack(VSS *stack)
  */
 static char *
 parsebackq(VSS *const stack, char * const in,
-    struct nodelist **const pbqlist, const int oldstyle)
+    struct nodelist **const pbqlist, const int oldstyle, const int magicq)
 {
 	struct nodelist **nlpp;
 	const int savepbq = parsebackquote;
@@ -1353,6 +1366,7 @@ parsebackq(VSS *const stack, char * const in,
 	struct jmploc *const savehandler = handler;
 	const int savelen = in - stackblock();
 	int saveprompt;
+	int lno;
 
 	if (setjmp(jmploc.loc)) {
 		if (sstr)
@@ -1381,23 +1395,35 @@ parsebackq(VSS *const stack, char * const in,
 		char *pstr;
 		int line1 = plinno;
 
+		VTRACE(DBG_PARSE, ("parsebackq: repackaging `` as $( )"));
 		/*
 		 * Because the entire `...` is read here, we don't
 		 * need to bother the state stack.  That will be used
 		 * (as appropriate) when the processed string is re-read.
 		 */
 		STARTSTACKSTR(out);
+#ifdef DEBUG
+		for (psavelen = 0;;psavelen++) {
+#else
 		for (;;) {
+#endif
 			if (needprompt) {
 				setprompt(2);
 				needprompt = 0;
 			}
-			pc = pgetc_linecont();
+			pc = pgetc();
 			if (pc == '`')
 				break;
 			switch (pc) {
 			case '\\':
-				pc = pgetc();	/* cannot be '\n' */
+				pc = pgetc();
+#ifdef DEBUG
+				psavelen++;
+#endif
+				if (pc == '\n') {   /* keep \ \n for later */
+					plinno++;
+					needprompt = doprompt;
+				}
 				if (pc != '\\' && pc != '`' && pc != '$'
 				    && (!ISDBLQUOTE() || pc != '"'))
 					STPUTC('\\', out);
@@ -1405,14 +1431,11 @@ parsebackq(VSS *const stack, char * const in,
 
 			case '\n':
 				plinno++;
-				/*
-				out = insert_elided_nl(out);
-				*/
 				needprompt = doprompt;
 				break;
 
 			case PEOF:
-			        startlinno = plinno;
+			        startlinno = line1;
 				synerror("EOF in backquote substitution");
  				break;
 
@@ -1422,7 +1445,9 @@ parsebackq(VSS *const stack, char * const in,
 			STPUTC(pc, out);
 		}
 		STPUTC('\0', out);
+		VTRACE(DBG_PARSE, (" read %d", psavelen));
 		psavelen = out - stackblock();
+		VTRACE(DBG_PARSE, (" produced %d\n", psavelen));
 		if (psavelen > 0) {
 			pstr = grabstackstr(out);
 			setinputstring(pstr, 1, line1);
@@ -1441,7 +1466,9 @@ parsebackq(VSS *const stack, char * const in,
 	} else
 		saveprompt = 0;
 
+	lno = -plinno;
 	n = list(0, oldstyle);
+	lno += plinno;
 
 	if (oldstyle)
 		doprompt = saveprompt;
@@ -1475,10 +1502,12 @@ parsebackq(VSS *const stack, char * const in,
 	}
 	parsebackquote = savepbq;
 	handler = savehandler;
-	if (arinest || ISDBLQUOTE())
-		USTPUTC(CTLBACKQ | CTLQUOTE, out);
-	else
-		USTPUTC(CTLBACKQ, out);
+	if (arinest || ISDBLQUOTE()) {
+		STPUTC(CTLBACKQ | CTLQUOTE, out);
+		while (--lno >= 0)
+			STPUTC(CTLNONL, out);
+	} else
+		STPUTC(CTLBACKQ, out);
 
 	return out;
 }
@@ -1526,7 +1555,7 @@ parseredir(const char *out,  int c)
 				np->nfile.fd = 0;
 			}
 			np->type = NHERE;
-			heredoc = stalloc(sizeof(struct heredoc));
+			heredoc = stalloc(sizeof(struct HereDoc));
 			heredoc->here = np;
 			heredoc->startline = plinno;
 			if ((c = pgetc_linecont()) == '-') {
@@ -1729,25 +1758,28 @@ readtoken1(int firstc, char const *syn, int magicq)
 				USTPUTC(c, out);
 				--parenlevel;
 			} else {
-				if (pgetc_linecont() == ')') {
+				if (pgetc_linecont() == /*(*/ ')') {
 					out = insert_elided_nl(out);
 					if (--arinest == 0) {
 						TS_POP();
 						USTPUTC(CTLENDARI, out);
 					} else
-						USTPUTC(')', out);
+						USTPUTC(/*(*/ ')', out);
 				} else {
+					break;	/* to synerror() just below */
+#if 0	/* the old way, causes weird errors on bad input */
 					/*
 					 * unbalanced parens
 					 *  (don't 2nd guess - no error)
 					 */
 					pungetc();
-					USTPUTC(')', out);
+					USTPUTC(/*(*/ ')', out);
+#endif
 				}
 			}
 			continue;
 		case CBQUOTE:	/* '`' */
-			out = parsebackq(stack, out, &bqlist, 1);
+			out = parsebackq(stack, out, &bqlist, 1, magicq);
 			continue;
 		case CEOF:		/* --> c == PEOF */
 			break;		/* will exit loop */
@@ -1762,7 +1794,7 @@ readtoken1(int firstc, char const *syn, int magicq)
 
 	if (syntax == ARISYNTAX) {
 		cleanup_state_stack(stack);
-		synerror("Missing '))'");
+		synerror(/*((*/ "Missing '))'");
 	}
 	if (syntax != BASESYNTAX && /* ! parsebackquote && */ !magicq) {
 		cleanup_state_stack(stack);
@@ -1775,7 +1807,7 @@ readtoken1(int firstc, char const *syn, int magicq)
 		synerror("Missing '}'");
 	}
 
-	USTPUTC('\0', out);
+	STPUTC('\0', out);
 	len = out - stackblock();
 	out = stackblock();
 
@@ -1789,6 +1821,11 @@ readtoken1(int firstc, char const *syn, int magicq)
 			pungetc();
 		}
 	}
+
+	VTRACE(DBG_PARSE,
+	    ("readtoken1 %sword \"%s\", completed%s (%d) left %d enl\n",
+	    (quotef ? "quoted " : ""), out, (bqlist ? " with cmdsubs" : ""),
+	    len, elided_nl));
 
 	quoteflag = quotef;
 	backquotelist = bqlist;
@@ -1822,7 +1859,7 @@ parsesub: {
 		} else {
 			out = insert_elided_nl(out);
 			pungetc();
-			out = parsebackq(stack, out, &bqlist, 0);
+			out = parsebackq(stack, out, &bqlist, 0, magicq);
 		}
 	} else {
 		USTPUTC(CTLVAR, out);
@@ -1978,8 +2015,8 @@ parsearith: {
 		 *
 		 *	XXX It isn't, must fix, soonish...
 		 */
-		USTPUTC('(', out);
-		USTPUTC('(', out);
+		USTPUTC('(' /*)*/, out);
+		USTPUTC('(' /*)*/, out);
 		/*
 		 * Need 2 of them because there will (should be)
 		 * two closing ))'s to follow later.
@@ -2008,9 +2045,14 @@ parsearith: {
 
 
 #ifdef mkinit
+INCLUDE "parser.h"
+
 RESET {
-	tokpushback = 0;
-	checkkwd = 0;
+	psp.v_current_parser = &parse_state;
+
+	parse_state.ps_tokpushback = 0;
+	parse_state.ps_checkkwd = 0;
+	parse_state.ps_heredoclist = NULL;
 }
 #endif
 
@@ -2147,14 +2189,102 @@ pgetc_linecont(void)
 const char *
 getprompt(void *unused)
 {
+	char *p;
+	const char *cp;
+
+	if (!doprompt)
+		return "";
+
+	VTRACE(DBG_PARSE|DBG_EXPAND, ("getprompt %d\n", whichprompt));
+
 	switch (whichprompt) {
 	case 0:
 		return "";
 	case 1:
-		return ps1val();
+		p = ps1val();
+		break;
 	case 2:
-		return ps2val();
+		p = ps2val();
+		break;
 	default:
 		return "<internal prompt error>";
 	}
+	if (p == NULL)
+		return "";
+
+	VTRACE(DBG_PARSE|DBG_EXPAND, ("prompt <<%s>>\n", p));
+
+	cp = expandstr(p, plinno);
+
+	VTRACE(DBG_PARSE|DBG_EXPAND, ("prompt -> <<%s>>\n", cp));
+
+	return cp;
+}
+
+/*
+ * Expand a string ... used for expanding prompts (PS1...)
+ *
+ * Never return NULL, always some string (return input string if invalid)
+ */
+const char *
+expandstr(char *ps, int lineno)
+{
+	union node n;
+	struct jmploc jmploc;
+	struct jmploc *const savehandler = handler;
+	struct parsefile *const savetopfile = getcurrentfile();
+	const int save_x = xflag;
+	struct parse_state new_state = init_parse_state;
+	struct parse_state *const saveparser = psp.v_current_parser;
+	struct stackmark smark;
+	const char *result = NULL;
+
+	setstackmark(&smark);
+	/*
+	 * At this point we anticipate that there may be a string
+	 * growing on the stack, but we have no idea how big it is.
+	 * However we know that it cannot be bigger than the current
+	 * allocated stack block, so simply reserve the whole thing,
+	 * then we can use the stack without barfing all over what
+	 * is there already...   (the stack mark undoes this later.)
+	 */
+	(void) stalloc(stackblocksize());
+
+	if (!setjmp(jmploc.loc)) {
+		handler = &jmploc;
+
+		psp.v_current_parser = &new_state;
+		setinputstring(ps, 1, lineno);
+
+		readtoken1(pgetc(), DQSYNTAX, 1);
+		if (backquotelist != NULL && !promptcmds)
+			result = "-o promptcmds not set: ";
+		else {
+			n.narg.type = NARG;
+			n.narg.next = NULL;
+			n.narg.text = wordtext;
+			n.narg.lineno = lineno;
+			n.narg.backquote = backquotelist;
+
+			xflag = 0;	/* we might be expanding PS4 ... */
+			expandarg(&n, NULL, 0);
+			result = stackblock();
+		}
+		INTOFF;
+	}
+	psp.v_current_parser = saveparser;
+	xflag = save_x;
+	popfilesupto(savetopfile);
+	handler = savehandler;
+	popstackmark(&smark);
+
+	if (result != NULL) {
+		INTON;
+	} else {
+		if (exception == EXINT)
+			exraise(SIGINT);
+		result = ps;
+	}
+
+	return result;
 }

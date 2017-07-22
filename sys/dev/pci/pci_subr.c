@@ -1,4 +1,4 @@
-/*	$NetBSD: pci_subr.c,v 1.186 2017/06/08 03:39:18 msaitoh Exp $	*/
+/*	$NetBSD: pci_subr.c,v 1.190 2017/07/13 08:41:19 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 1997 Zubin D. Dittia.  All rights reserved.
@@ -40,7 +40,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pci_subr.c,v 1.186 2017/06/08 03:39:18 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pci_subr.c,v 1.190 2017/07/13 08:41:19 msaitoh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_pci.h"
@@ -1907,8 +1907,10 @@ pci_conf_print_pcie_cap(const pcireg_t *regs, int capoff)
 	}
 
 	if (check_slot == true) {
+		pcireg_t slcap;
+		
 		/* Slot Capability Register */
-		reg = regs[o2i(capoff + PCIE_SLCAP)];
+		slcap = reg = regs[o2i(capoff + PCIE_SLCAP)];
 		printf("    Slot Capability Register: 0x%08x\n", reg);
 		onoff("Attention Button Present", reg, PCIE_SLCAP_ABP);
 		onoff("Power Controller Present", reg, PCIE_SLCAP_PCP);
@@ -1936,35 +1938,44 @@ pci_conf_print_pcie_cap(const pcireg_t *regs, int capoff)
 		onoff("Command Completed Interrupt Enabled", reg,
 		    PCIE_SLCSR_CCE);
 		onoff("Hot-Plug Interrupt Enabled", reg, PCIE_SLCSR_HPE);
-		printf("      Attention Indicator Control: ");
-		switch ((reg & PCIE_SLCSR_AIC) >> 6) {
-		case 0x0:
-			printf("reserved\n");
-			break;
-		case PCIE_SLCSR_IND_ON:
-			printf("on\n");
-			break;
-		case PCIE_SLCSR_IND_BLINK:
-			printf("blink\n");
-			break;
-		case PCIE_SLCSR_IND_OFF:
-			printf("off\n");
-			break;
+		/*
+		 * For Attention Indicator Control and Power Indicator Control,
+		 * it's allowed to be a read only value 0 if corresponding
+		 * capability register bit is 0.
+		 */
+		if (slcap & PCIE_SLCAP_AIP) {
+			printf("      Attention Indicator Control: ");
+			switch ((reg & PCIE_SLCSR_AIC) >> 6) {
+			case 0x0:
+				printf("reserved\n");
+				break;
+			case PCIE_SLCSR_IND_ON:
+				printf("on\n");
+				break;
+			case PCIE_SLCSR_IND_BLINK:
+				printf("blink\n");
+				break;
+			case PCIE_SLCSR_IND_OFF:
+				printf("off\n");
+				break;
+			}
 		}
-		printf("      Power Indicator Control: ");
-		switch ((reg & PCIE_SLCSR_PIC) >> 8) {
-		case 0x0:
-			printf("reserved\n");
-			break;
-		case PCIE_SLCSR_IND_ON:
-			printf("on\n");
-			break;
-		case PCIE_SLCSR_IND_BLINK:
-			printf("blink\n");
-			break;
-		case PCIE_SLCSR_IND_OFF:
-			printf("off\n");
-			break;
+		if (slcap & PCIE_SLCAP_PIP) {
+			printf("      Power Indicator Control: ");
+			switch ((reg & PCIE_SLCSR_PIC) >> 8) {
+			case 0x0:
+				printf("reserved\n");
+				break;
+			case PCIE_SLCSR_IND_ON:
+				printf("on\n");
+				break;
+			case PCIE_SLCSR_IND_BLINK:
+				printf("blink\n");
+				break;
+			case PCIE_SLCSR_IND_OFF:
+				printf("off\n");
+				break;
+			}
 		}
 		printf("      Power Controller Control: Power %s\n",
 		    reg & PCIE_SLCSR_PCC ? "off" : "on");
@@ -2076,7 +2087,7 @@ pci_conf_print_pcie_cap(const pcireg_t *regs, int capoff)
 		break;
 	}
 	printf("      OBFF Supported: ");
-	switch ((reg & PCIE_DCAP2_OBFF) >> 18) {
+	switch (__SHIFTOUT(reg, PCIE_DCAP2_OBFF)) {
 	case 0x0:
 		printf("Not supported\n");
 		break;
@@ -2128,7 +2139,7 @@ pci_conf_print_pcie_cap(const pcireg_t *regs, int capoff)
 	onoff("Emergency Power Reduction Request", reg,
 	    PCIE_DCSR2_EMGPWRRED_REQ);
 	printf("      OBFF: ");
-	switch ((reg & PCIE_DCSR2_OBFF_EN) >> 13) {
+	switch (__SHIFTOUT(reg, PCIE_DCSR2_OBFF_EN)) {
 	case 0x0:
 		printf("Disabled\n");
 		break;
@@ -3492,18 +3503,15 @@ pci_conf_print_ltr_cap(const pcireg_t *regs, int capoff, int extcapoff)
 	pcireg_t reg;
 
 	printf("\n  Latency Tolerance Reporting\n");
-	reg = regs[o2i(extcapoff + PCI_LTR_MAXSNOOPLAT)] & 0xffff;
-	printf("    Max Snoop Latency Register: 0x%04x\n", reg);
-	printf("      Max Snoop LatencyValue: %u\n",
-	    (pcireg_t)__SHIFTOUT(reg, PCI_LTR_MAXSNOOPLAT_VAL));
-	printf("      Max Snoop LatencyScale: %uns\n",
-	    PCI_LTR_SCALETONS(__SHIFTOUT(reg, PCI_LTR_MAXSNOOPLAT_SCALE)));
-	reg = regs[o2i(extcapoff + PCI_LTR_MAXNOSNOOPLAT)] >> 16;
-	printf("    Max No-Snoop Latency Register: 0x%04x\n", reg);
-	printf("      Max No-Snoop LatencyValue: %u\n",
-	    (pcireg_t)__SHIFTOUT(reg, PCI_LTR_MAXNOSNOOPLAT_VAL));
-	printf("      Max No-Snoop LatencyScale: %uns\n",
-	    PCI_LTR_SCALETONS(__SHIFTOUT(reg, PCI_LTR_MAXNOSNOOPLAT_SCALE)));
+	reg = regs[o2i(extcapoff + PCI_LTR_MAXSNOOPLAT)];
+	printf("    Max Snoop Latency Register: 0x%04x\n", reg & 0xffff);
+	printf("      Max Snoop Latency: %juns\n",
+	    (uintmax_t)(__SHIFTOUT(reg, PCI_LTR_MAXSNOOPLAT_VAL)
+	    * PCI_LTR_SCALETONS(__SHIFTOUT(reg, PCI_LTR_MAXSNOOPLAT_SCALE))));
+	printf("    Max No-Snoop Latency Register: 0x%04x\n", reg >> 16);
+	printf("      Max No-Snoop Latency: %juns\n",
+	    (uintmax_t)(__SHIFTOUT(reg, PCI_LTR_MAXNOSNOOPLAT_VAL)
+	    * PCI_LTR_SCALETONS(__SHIFTOUT(reg, PCI_LTR_MAXNOSNOOPLAT_SCALE))));
 }
 
 static void
@@ -3931,7 +3939,7 @@ static struct {
 	  NULL },
 	{ PCI_EXTCAP_PASID,	"Process Address Space ID",
 	  pci_conf_print_pasid_cap },
-	{ PCI_EXTCAP_LN_REQ,	"LN Requester",
+	{ PCI_EXTCAP_LNR,	"LN Requester",
 	  pci_conf_print_lnr_cap },
 	{ PCI_EXTCAP_DPC,	"Downstream Port Containment",
 	  pci_conf_print_dpc_cap },

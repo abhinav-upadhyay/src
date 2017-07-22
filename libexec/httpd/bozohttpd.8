@@ -1,4 +1,4 @@
-.\"	$NetBSD: bozohttpd.8,v 1.65 2017/01/31 14:36:09 mrg Exp $
+.\"	$NetBSD: bozohttpd.8,v 1.67 2017/07/07 07:05:49 mrg Exp $
 .\"
 .\"	$eterna: bozohttpd.8,v 1.101 2011/11/18 01:25:11 mrg Exp $
 .\"
@@ -105,7 +105,7 @@ The
 directory is expected to contain the CGI programs to be used.
 .Nm
 looks for URL's in the form of
-.Em /cgi-bin/\*[Lt]scriptname\*[Gt]
+.Em /cgi-bin/<scriptname>
 where
 .Aq scriptname
 is a valid CGI program in the
@@ -488,7 +488,7 @@ will redirect to
 .Em http://NetBSD.org/
 Otherwise provided schema will be used i.e. symbolic link to
 .Em ftp://NetBSD.org/
-will redirect to provided the URL.
+will redirect to the provided URL.
 .Sh EXAMPLES
 To configure set of virtual hosts, one would use an
 .Xr inetd.conf 5

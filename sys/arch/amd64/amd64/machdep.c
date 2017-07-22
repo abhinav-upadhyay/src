@@ -1,4 +1,4 @@
-/*	$NetBSD: machdep.c,v 1.255 2017/03/24 17:09:36 maxv Exp $	*/
+/*	$NetBSD: machdep.c,v 1.259 2017/07/22 09:20:01 maxv Exp $	*/
 
 /*-
  * Copyright (c) 1996, 1997, 1998, 2000, 2006, 2007, 2008, 2011
@@ -111,7 +111,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.255 2017/03/24 17:09:36 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.259 2017/07/22 09:20:01 maxv Exp $");
 
 /* #define XENDEBUG_LOW  */
 
@@ -299,6 +299,8 @@ u_long cpu_dump_mempagecnt(void);
 void dodumpsys(void);
 void dumpsys(void);
 
+static void x86_64_proc0_pcb_ldt_init(void);
+
 extern int time_adjusted;	/* XXX no common header */
 
 void dump_misc_init(void);
@@ -394,12 +396,12 @@ cpu_startup(void)
 #endif
 
 	gdt_init();
-	x86_64_proc0_tss_ldt_init();
+	x86_64_proc0_pcb_ldt_init();
 
 	cpu_init_tss(&cpu_info_primary);
 #if !defined(XEN)
 	ltr(cpu_info_primary.ci_tss_sel);
-#endif /* !defined(XEN) */
+#endif
 
 	x86_startup();
 }
@@ -458,10 +460,10 @@ x86_64_tls_switch(struct lwp *l)
 #endif /* XEN */
 
 /*
- * Set up proc0's TSS and LDT.
+ * Set up proc0's PCB and LDT.
  */
-void
-x86_64_proc0_tss_ldt_init(void)
+static void
+x86_64_proc0_pcb_ldt_init(void)
 {
 	struct lwp *l = &lwp0;
 	struct pcb *pcb = lwp_getpcb(l);
@@ -472,25 +474,21 @@ x86_64_proc0_tss_ldt_init(void)
 	pcb->pcb_rsp0 = (uvm_lwp_getuarea(l) + USPACE - 16) & ~0xf;
 	pcb->pcb_iopl = SEL_KPL;
 	pcb->pcb_dbregs = NULL;
-
-	pmap_kernel()->pm_ldt_sel = GSYSSEL(GLDT_SEL, SEL_KPL);
 	pcb->pcb_cr0 = rcr0() & ~CR0_TS;
 	l->l_md.md_regs = (struct trapframe *)pcb->pcb_rsp0 - 1;
 
 #if !defined(XEN)
-	lldt(pmap_kernel()->pm_ldt_sel);
+	lldt(GSYSSEL(GLDT_SEL, SEL_KPL));
 #else
-	{
 	struct physdev_op physop;
-	xen_set_ldt((vaddr_t) ldtstore, LDT_SIZE >> 3);
+	xen_set_ldt((vaddr_t)ldtstore, LDT_SIZE >> 3);
 	/* Reset TS bit and set kernel stack for interrupt handlers */
 	HYPERVISOR_fpu_taskswitch(1);
 	HYPERVISOR_stack_switch(GSEL(GDATA_SEL, SEL_KPL), pcb->pcb_rsp0);
 	physop.cmd = PHYSDEVOP_SET_IOPL;
 	physop.u.set_iopl.iopl = pcb->pcb_iopl;
 	HYPERVISOR_physdev_op(&physop);
-	}
-#endif /* XEN */
+#endif
 }
 
 /*
@@ -1325,6 +1323,8 @@ setregs(struct lwp *l, struct exec_package *pack, vaddr_t stack)
 
 	l->l_proc->p_flag &= ~PK_32;
 
+	l->l_md.md_flags = MDL_IRET;
+
 	tf = l->l_md.md_regs;
 	tf->tf_ds = LSEL(LUDATA_SEL, SEL_UPL);
 	tf->tf_es = LSEL(LUDATA_SEL, SEL_UPL);
@@ -2001,38 +2001,33 @@ cpu_fsgs_zero(struct lwp *l)
 	struct pcb *pcb;
 	uint64_t zero = 0;
 
-	pcb = lwp_getpcb(l);
-	if (l == curlwp) {
-		kpreempt_disable();
-		tf->tf_fs = 0;
-		tf->tf_gs = 0;
-		setfs(0);
-#ifndef XEN
-		setusergs(0);
-#else
-		HYPERVISOR_set_segment_base(SEGBASE_GS_USER_SEL, 0);
-#endif
-		if ((l->l_proc->p_flag & PK_32) == 0) {
-#ifndef XEN
-			wrmsr(MSR_FSBASE, 0);
-			wrmsr(MSR_KERNELGSBASE, 0);
-#else
-			HYPERVISOR_set_segment_base(SEGBASE_FS, 0);
-			HYPERVISOR_set_segment_base(SEGBASE_GS_USER, 0);
-#endif
-		}
-		pcb->pcb_fs = 0;
-		pcb->pcb_gs = 0;
-		update_descriptor(&curcpu()->ci_gdt[GUFS_SEL], &zero);
-		update_descriptor(&curcpu()->ci_gdt[GUGS_SEL], &zero);
-		kpreempt_enable();
-	} else {
-		tf->tf_fs = 0;
-		tf->tf_gs = 0;
-		pcb->pcb_fs = 0;
-		pcb->pcb_gs = 0;
-	}
+	KASSERT(l == curlwp);
 
+	pcb = lwp_getpcb(l);
+
+	kpreempt_disable();
+	tf->tf_fs = 0;
+	tf->tf_gs = 0;
+	setfs(0);
+#ifndef XEN
+	setusergs(0);
+#else
+	HYPERVISOR_set_segment_base(SEGBASE_GS_USER_SEL, 0);
+#endif
+	if ((l->l_proc->p_flag & PK_32) == 0) {
+#ifndef XEN
+		wrmsr(MSR_FSBASE, 0);
+		wrmsr(MSR_KERNELGSBASE, 0);
+#else
+		HYPERVISOR_set_segment_base(SEGBASE_FS, 0);
+		HYPERVISOR_set_segment_base(SEGBASE_GS_USER, 0);
+#endif
+	}
+	pcb->pcb_fs = 0;
+	pcb->pcb_gs = 0;
+	update_descriptor(&curcpu()->ci_gdt[GUFS_SEL], &zero);
+	update_descriptor(&curcpu()->ci_gdt[GUGS_SEL], &zero);
+	kpreempt_enable();
 }
 
 /*
@@ -2047,25 +2042,23 @@ cpu_fsgs_reload(struct lwp *l, int fssel, int gssel)
 	struct pcb *pcb;
 
 	KASSERT(l->l_proc->p_flag & PK_32);
+	KASSERT(l == curlwp);
+
 	tf = l->l_md.md_regs;
-	if (l == curlwp) {
-		pcb = lwp_getpcb(l);
-		kpreempt_disable();
-		update_descriptor(&curcpu()->ci_gdt[GUFS_SEL], &pcb->pcb_fs);
-		update_descriptor(&curcpu()->ci_gdt[GUGS_SEL], &pcb->pcb_gs);
-		setfs(fssel);
+
+	pcb = lwp_getpcb(l);
+	kpreempt_disable();
+	update_descriptor(&curcpu()->ci_gdt[GUFS_SEL], &pcb->pcb_fs);
+	update_descriptor(&curcpu()->ci_gdt[GUGS_SEL], &pcb->pcb_gs);
+	setfs(fssel);
 #ifndef XEN
-		setusergs(gssel);
+	setusergs(gssel);
 #else
-		HYPERVISOR_set_segment_base(SEGBASE_GS_USER_SEL, gssel);
+	HYPERVISOR_set_segment_base(SEGBASE_GS_USER_SEL, gssel);
 #endif
-		tf->tf_fs = fssel;
-		tf->tf_gs = gssel;
-		kpreempt_enable();
-	} else {
-		tf->tf_fs = fssel;
-		tf->tf_gs = gssel;
-	}
+	tf->tf_fs = fssel;
+	tf->tf_gs = gssel;
+	kpreempt_enable();
 }
 
 

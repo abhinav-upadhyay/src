@@ -1,4 +1,4 @@
-#	$NetBSD: 3RDPARTY,v 1.1448 2017/06/08 16:44:03 abhinav Exp $
+#	$NetBSD: 3RDPARTY,v 1.1456 2017/07/05 11:22:18 wiz Exp $
 #
 # This file contains a list of the software that has been integrated into
 # NetBSD where we are not the primary maintainer.
@@ -114,8 +114,8 @@ Notes:
 bc includes dc, both of which are in the NetBSD tree.
 
 Package:	bind [named and utils]
-Version:	9.10.4-P8/BSD	9.11.0-P3/MPL
-Current Vers:	9.10.4-P8/BSD
+Version:	9.10.5-P2/BSD	9.11.1-P1/MPL
+Current Vers:	9.10.5-P2/BSD
 Maintainer:	Paul Vixie <vixie@vix.com>
 Archive Site:	ftp://ftp.isc.org/isc/bind9/
 Home Page:	http://www.isc.org/software/bind/
@@ -412,8 +412,8 @@ Location:	external/bsd/ekermit
 Notes:
 
 Package:	expat
-Version:	2.2.0
-Current Vers:	2.2.0
+Version:	2.2.1
+Current Vers:	2.2.1
 Maintainer:	Expat Project
 Archive Site:	http://sourceforge.net/projects/expat/files/expat/
 Home Page:	http://www.libexpat.org/
@@ -452,7 +452,7 @@ There is a flex2netbsd script to help newer imports.
 
 Package:	gcc
 Version:	4.8.5/5.4
-Current Vers:	4.8.5/5.4/6.3
+Current Vers:	4.8.5/5.4/6.4/7.1
 Maintainer:	FSF
 Archive Site:	ftp://ftp.gnu.org/gnu/gcc/
 Home Page:	http://www.gnu.org/software/gcc/
@@ -483,7 +483,7 @@ Before importing a new version of external/gpl3/gcc:
 
 Package:	gdb
 Version:	7.12
-Current Vers:	7.12.1
+Current Vers:	8.0
 Maintainer:	FSF
 Archive Site:	ftp://ftp.gnu.org/gnu/gdb/
 Home Page:	http://www.gnu.org/software/gdb/
@@ -1174,7 +1174,7 @@ now to do a new import.
 
 Package:	Postfix
 Version:	3.1.4
-Current Vers:	3.1.4
+Current Vers:	3.1.6/3.2.2
 Maintainer:	Wietse Venema <wietse@porcupine.org>
 Archive Site:	ftp://postfix.cloud9.net/official/
 Home Page:	http://www.postfix.org/
@@ -1715,3 +1715,14 @@ License:	GPLv2 (dtc), BSD (libfdt)
 Location:	external/gpl2/dtc, sys/external/bsd/libfdt
 Notes:
 external/gpl2/dtc/dtc2netbsd should be used to create directories to import
+
+Package:	dts
+Version:	4.11.5
+Current Vers:	4.11.5
+Maintainer:	https://www.kernel.org/
+Archive Site:	https://cdn.kernel.org/pub/linux/kernel/v4.x/
+Home Page:	https://www.kernel.org/
+Mailing List:	mailto:devicetree@vger.kernel.org
+Responsible:	jmcneill
+License:	GPLv2 and dual GPLv2/X11 license
+Location:	sys/external/gpl2/dts

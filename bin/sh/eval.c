@@ -1,4 +1,4 @@
-/*	$NetBSD: eval.c,v 1.146 2017/06/08 13:12:17 kre Exp $	*/
+/*	$NetBSD: eval.c,v 1.151 2017/06/30 23:01:21 kre Exp $	*/
 
 /*-
  * Copyright (c) 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)eval.c	8.9 (Berkeley) 6/8/95";
 #else
-__RCSID("$NetBSD: eval.c,v 1.146 2017/06/08 13:12:17 kre Exp $");
+__RCSID("$NetBSD: eval.c,v 1.151 2017/06/30 23:01:21 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -179,29 +179,29 @@ sh_pipe(int fds[2])
 int
 evalcmd(int argc, char **argv)
 {
-        char *p;
-        char *concat;
-        char **ap;
+	char *p;
+	char *concat;
+	char **ap;
 
-        if (argc > 1) {
-                p = argv[1];
-                if (argc > 2) {
-                        STARTSTACKSTR(concat);
-                        ap = argv + 2;
-                        for (;;) {
-                                while (*p)
-                                        STPUTC(*p++, concat);
-                                if ((p = *ap++) == NULL)
-                                        break;
-                                STPUTC(' ', concat);
-                        }
-                        STPUTC('\0', concat);
-                        p = grabstackstr(concat);
-                }
-                evalstring(p, builtin_flags & EV_TESTED);
-        } else
+	if (argc > 1) {
+		p = argv[1];
+		if (argc > 2) {
+			STARTSTACKSTR(concat);
+			ap = argv + 2;
+			for (;;) {
+				while (*p)
+					STPUTC(*p++, concat);
+				if ((p = *ap++) == NULL)
+					break;
+				STPUTC(' ', concat);
+			}
+			STPUTC('\0', concat);
+			p = grabstackstr(concat);
+		}
+		evalstring(p, builtin_flags & EV_TESTED);
+	} else
 		exitstatus = 0;
-        return exitstatus;
+	return exitstatus;
 }
 
 
@@ -219,8 +219,8 @@ evalstring(char *s, int flag)
 	setinputstring(s, 1, line_number);
 
 	while ((n = parsecmd(0)) != NEOF) {
-		TRACE(("evalstring: "); showtree(n));
-		if (nflag == 0)
+		XTRACE(DBG_EVAL, ("evalstring: "), showtree(n));
+		if (n && nflag == 0)
 			evaltree(n, flag | EV_MORE);
 		popstackmark(&smark);
 	}
@@ -243,7 +243,8 @@ evaltree(union node *n, int flags)
 
 	do_etest = false;
 	if (n == NULL || nflag) {
-		TRACE(("evaltree(%s) called\n", n == NULL ? "NULL" : "-n"));
+		VTRACE(DBG_EVAL, ("evaltree(%s) called\n",
+		    n == NULL ? "NULL" : "-n"));
 		if (nflag == 0)
 			exitstatus = 0;
 		goto out;
@@ -251,13 +252,8 @@ evaltree(union node *n, int flags)
 #ifndef SMALL
 	displayhist = 1;	/* show history substitutions done with fc */
 #endif
-#ifdef NODETYPENAME
-	TRACE(("pid %d, evaltree(%p: %s(%d), %#x) called\n",
+	CTRACE(DBG_EVAL, ("pid %d, evaltree(%p: %s(%d), %#x) called\n",
 	    getpid(), n, NODETYPENAME(n->type), n->type, flags));
-#else
-	TRACE(("pid %d, evaltree(%p: %d, %#x) called\n",
-	    getpid(), n, n->type, flags));
-#endif
 	switch (n->type) {
 	case NSEMI:
 		evaltree(n->nbinary.ch1, (sflags & EV_TESTED) |
@@ -280,9 +276,24 @@ evaltree(union node *n, int flags)
 		break;
 	case NREDIR:
 		expredir(n->nredir.redirect);
+		if (xflag && n->nredir.redirect) {
+			union node *rn;
+
+			out2str(expandstr(ps4val(), line_number));
+			out2str("using redirections:");
+			for (rn = n->nredir.redirect; rn; rn = rn->nfile.next)
+				(void) outredir(&errout, rn, ' ');
+			out2str(" do\n");
+			flushout(&errout);
+		}
 		redirect(n->nredir.redirect, REDIR_PUSH | REDIR_KEEP);
 		evaltree(n->nredir.n, flags);
 		popredir();
+		if (xflag && n->nredir.redirect) {
+			out2str(expandstr(ps4val(), line_number));
+			out2str("done\n");
+			flushout(&errout);
+		}
 		break;
 	case NSUBSHELL:
 		evalsubshell(n, flags & ~EV_MORE);
@@ -345,7 +356,7 @@ evaltree(union node *n, int flags)
 		flushout(&output);
 		break;
 	}
-out:
+ out:
 	if (pendingsigs)
 		dotrap();
 	if ((flags & EV_EXIT) != 0 || (eflag && exitstatus != 0 && do_etest))
@@ -361,14 +372,11 @@ evalloop(union node *n, int flags)
 	loopnest++;
 	status = 0;
 
-#ifdef NODETYPENAME
-	TRACE(("evalloop %s: ", NODETYPENAME(n->type)));
-#else
-	TRACE(("evalloop %s: ", n->type == NWHILE ? "while" : "until"));
-#endif
-	TRACE((""); showtree(n->nbinary.ch1));
-	TRACE(("evalloop    do: "); showtree(n->nbinary.ch2));
-	TRACE(("evalloop  done\n"));
+	CTRACE(DBG_EVAL,  ("evalloop %s:", NODETYPENAME(n->type)));
+	VXTRACE(DBG_EVAL, (" "), showtree(n->nbinary.ch1));
+	VXTRACE(DBG_EVAL, ("evalloop    do: "), showtree(n->nbinary.ch2));
+	VTRACE(DBG_EVAL,  ("evalloop  done\n"));
+	CTRACE(DBG_EVAL,  ("\n"));
 
 	for (;;) {
 		evaltree(n->nbinary.ch1, EV_TESTED | EV_MORE);
@@ -429,7 +437,7 @@ evalfor(union node *n, int flags)
 			f |= EV_MORE;
 
 		if (xflag) {
-			out2str(ps4val());
+			out2str(expandstr(ps4val(), line_number));
 			out2str("for ");
 			out2str(n->nfor.var);
 			out2c('=');
@@ -455,7 +463,7 @@ evalfor(union node *n, int flags)
 	}
 	loopnest--;
 	exitstatus = status;
-out:
+ out:
 	popstackmark(&smark);
 }
 
@@ -512,6 +520,16 @@ evalsubshell(union node *n, int flags)
 	int backgnd = (n->type == NBACKGND);
 
 	expredir(n->nredir.redirect);
+	if (xflag && n->nredir.redirect) {
+		union node *rn;
+
+		out2str(expandstr(ps4val(), line_number));
+		out2str("using redirections:");
+		for (rn = n->nredir.redirect; rn; rn = rn->nfile.next)
+			(void) outredir(&errout, rn, ' ');
+		out2str(" do subshell\n");
+		flushout(&errout);
+	}
 	INTOFF;
 	jp = makejob(n, 1);
 	if (forkshell(jp, n, backgnd ? FORK_BG : FORK_FG) == 0) {
@@ -524,6 +542,11 @@ evalsubshell(union node *n, int flags)
 	}
 	exitstatus = backgnd ? 0 : waitforjob(jp);
 	INTON;
+	if (!backgnd && xflag && n->nredir.redirect) {
+		out2str(expandstr(ps4val(), line_number));
+		out2str("done subshell\n");
+		flushout(&errout);
+	}
 }
 
 
@@ -553,7 +576,7 @@ expredir(union node *n)
 		case NFROMFD:
 		case NTOFD:
 			if (redir->ndup.vname) {
-				expandarg(redir->ndup.vname, &fn, EXP_FULL | EXP_TILDE);
+				expandarg(redir->ndup.vname, &fn, EXP_TILDE | EXP_REDIR);
 				fixredir(redir, fn.list->text, 1);
 			}
 			break;
@@ -579,7 +602,7 @@ evalpipe(union node *n)
 	int prevfd;
 	int pip[2];
 
-	TRACE(("evalpipe(0x%lx) called\n", (long)n));
+	CTRACE(DBG_EVAL, ("evalpipe(%p) called\n", n));
 	pipelen = 0;
 	for (lp = n->npipe.cmdlist ; lp ; lp = lp->next)
 		pipelen++;
@@ -613,7 +636,8 @@ evalpipe(union node *n)
 	}
 	if (n->npipe.backgnd == 0) {
 		exitstatus = waitforjob(jp);
-		TRACE(("evalpipe:  job done exit status %d\n", exitstatus));
+		CTRACE(DBG_EVAL, ("evalpipe:  job done exit status %d\n",
+		    exitstatus));
 	} else
 		exitstatus = 0;
 	INTON;
@@ -673,9 +697,9 @@ evalbackcmd(union node *n, struct backcmd *result)
 		result->jp = jp;
 		INTON;
 	}
-out:
+ out:
 	popstackmark(&smark);
-	TRACE(("evalbackcmd done: fd=%d buf=0x%x nleft=%d jp=0x%x\n",
+	CTRACE(DBG_EVAL, ("evalbackcmd done: fd=%d buf=0x%x nleft=%d jp=0x%x\n",
 		result->fd, result->buf, result->nleft, result->jp));
 }
 
@@ -773,12 +797,11 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 
 	vforked = 0;
 	/* First expand the arguments. */
-	TRACE(("evalcommand(%p, %d) called\n", cmd, flags));
+	CTRACE(DBG_EVAL, ("evalcommand(%p, %d) called\n", cmd, flags));
 	setstackmark(&smark);
 	back_exitstatus = 0;
 
-	if (cmd != NULL)
-		line_number = cmd->ncmd.lineno;
+	line_number = cmd->ncmd.lineno;
 
 	arglist.lastp = &arglist.list;
 	varflag = 1;
@@ -824,7 +847,7 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 	argv = stalloc(sizeof (char *) * (argc + 1));
 
 	for (sp = arglist.list ; sp ; sp = sp->next) {
-		TRACE(("evalcommand arg: %s\n", sp->text));
+		VTRACE(DBG_EVAL, ("evalcommand arg: %s\n", sp->text));
 		*argv++ = sp->text;
 	}
 	*argv = NULL;
@@ -836,7 +859,9 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 	/* Print the command if xflag is set. */
 	if (xflag) {
 		char sep = 0;
-		out2str(ps4val());
+		union node *rn;
+
+		out2str(expandstr(ps4val(), line_number));
 		for (sp = varlist.list ; sp ; sp = sp->next) {
 			char *p;
 
@@ -865,6 +890,9 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 			out2shstr(sp->text);
 			sep = ' ';
 		}
+		for (rn = cmd->ncmd.redirect; rn; rn = rn->nfile.next)
+			if (outredir(&errout, rn, sep))
+				sep = ' ';
 		outc('\n', &errout);
 		flushout(&errout);
 	}
@@ -950,7 +978,8 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 			switch (pid = vfork()) {
 			case -1:
 				serrno = errno;
-				TRACE(("Vfork failed, errno=%d\n", serrno));
+				VTRACE(DBG_EVAL, ("vfork() failed, errno=%d\n",
+				    serrno));
 				INTON;
 				error("Cannot vfork (%s)", strerror(serrno));
 				break;
@@ -961,9 +990,11 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 				SHELL_FORKED();
 				if (setjmp(jmploc.loc)) {
 					if (exception == EXSHELLPROC) {
-						/* We can't progress with the vfork,
-						 * so, set vforked = 2 so the parent
-						 * knows, and _exit();
+						/*
+						 * We can't progress with the
+						 * vfork, so, set vforked = 2
+						 * so the parent knows,
+						 * and _exit();
 						 */
 						vforked = 2;
 						_exit(0);
@@ -978,23 +1009,32 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 				break;
 			default:
 				VFORK_UNDO();
-				handler = savehandler;	/* restore from vfork(2) */
+						/* restore from vfork(2) */
+				handler = savehandler;
 				poplocalvars();
 				localvars = savelocalvars;
 				if (vforked == 2) {
 					vforked = 0;
 
 					(void)waitpid(pid, NULL, 0);
-					/* We need to progress in a normal fork fashion */
+					/*
+					 * We need to progress in a
+					 * normal fork fashion
+					 */
 					goto normal_fork;
 				}
+				/*
+				 * Here the child has left home,
+				 * getting on with its life, so
+				 * so must we...
+				 */
 				vforked = 0;
 				forkparent(jp, cmd, mode, pid);
 				goto parent;
 			}
 	VFORK_END
 		} else {
-normal_fork:
+ normal_fork:
 #endif
 			if (forkshell(jp, cmd, mode) != 0)
 				goto parent;	/* at end of routine */
@@ -1016,9 +1056,7 @@ normal_fork:
 	/* Execute the command. */
 	switch (cmdentry.cmdtype) {
 	case CMDFUNCTION:
-#ifdef DEBUG
-		trputs("Shell function:  ");  trargs(argv);
-#endif
+		VXTRACE(DBG_EVAL, ("Shell function:  "), trargs(argv));
 		redirect(cmd->ncmd.redirect, flags & EV_MORE ? REDIR_PUSH : 0);
 		saveparam = shellparam;
 		shellparam.malloc = 0;
@@ -1088,9 +1126,7 @@ normal_fork:
 
 	case CMDBUILTIN:
 	case CMDSPLBLTIN:
-#ifdef DEBUG
-		trputs("builtin command:  ");  trargs(argv);
-#endif
+		VXTRACE(DBG_EVAL, ("builtin command:  "), trargs(argv));
 		mode = (cmdentry.u.bltin == execcmd) ? 0 : REDIR_PUSH;
 		if (flags == EV_BACKCMD) {
 			memout.nleft = 0;
@@ -1104,7 +1140,8 @@ normal_fork:
 		handler = &jmploc;
 		temp_path = 0;
 		if (!setjmp(jmploc.loc)) {
-			/* We need to ensure the command hash table isn't
+			/*
+			 * We need to ensure the command hash table isn't
 			 * corrupted by temporary PATH assignments.
 			 * However we must ensure the 'local' command works!
 			 */
@@ -1167,9 +1204,7 @@ normal_fork:
 		break;
 
 	default:
-#ifdef DEBUG
-		trputs("normal command:  ");  trargs(argv);
-#endif
+		VXTRACE(DBG_EVAL, ("normal command:  "), trargs(argv));
 		redirect(cmd->ncmd.redirect, 
 		    (vforked ? REDIR_VFORK : 0) | REDIR_KEEP);
 		if (!vforked)
@@ -1181,7 +1216,8 @@ normal_fork:
 	}
 	goto out;
 
-parent:	/* parent process gets here (if we forked) */
+ parent:			/* parent process gets here (if we forked) */
+
 	exitstatus = 0;		/* if not altered just below */
 	if (mode == FORK_FG) {	/* argument to fork */
 		exitstatus = waitforjob(jp);
@@ -1192,10 +1228,10 @@ parent:	/* parent process gets here (if we forked) */
 	}
 	FORCEINTON;
 
-out:
+ out:
 	if (lastarg)
 		/* implement $_ for whatever use that really is */
-		setvar("_", lastarg, 0);
+		(void) setvarsafe("_", lastarg, VNOERROR);
 	popstackmark(&smark);
 }
 

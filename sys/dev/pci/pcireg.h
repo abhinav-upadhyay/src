@@ -1,4 +1,4 @@
-/*	$NetBSD: pcireg.h,v 1.130 2017/05/29 07:09:20 msaitoh Exp $	*/
+/*	$NetBSD: pcireg.h,v 1.132 2017/07/13 08:41:19 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 1995, 1996, 1999, 2000
@@ -1433,7 +1433,7 @@ struct pci_rom {
 #define	PCI_EXTCAP_SEC_PCIE	0x0019	/* Secondary PCI Express */
 #define	PCI_EXTCAP_PMUX		0x001a	/* Protocol Multiplexing */
 #define	PCI_EXTCAP_PASID	0x001b	/* Process Address Space ID */
-#define	PCI_EXTCAP_LN_REQ	0x001c	/* LN Requester */
+#define	PCI_EXTCAP_LNR		0x001c	/* LN Requester */
 #define	PCI_EXTCAP_DPC		0x001d	/* Downstream Port Containment */
 #define	PCI_EXTCAP_L1PM		0x001e	/* L1 PM Substates */
 #define	PCI_EXTCAP_PTM		0x001f	/* Precision Time Management */
@@ -1877,7 +1877,7 @@ struct pci_rom {
 #define	PCI_LTR_MAXNOSNOOPLAT	0x04	/* Max No-Snoop Latency */
 #define	PCI_LTR_MAXNOSNOOPLAT_VAL __BITS(25, 16) /* Max No-Snoop LatencyValue*/
 #define	PCI_LTR_MAXNOSNOOPLAT_SCALE __BITS(28, 26) /*Max NoSnoop LatencyScale*/
-#define	PCI_LTR_SCALETONS(x) ((32 << (x)) / 32)
+#define	PCI_LTR_SCALETONS(x) (1 << ((x) * 5))
 
 /*
  * Extended capability ID: 0x0019

@@ -1,4 +1,4 @@
-/*	$NetBSD: lapic.c,v 1.58 2017/05/23 08:54:39 nonaka Exp $	*/
+/*	$NetBSD: lapic.c,v 1.60 2017/07/13 00:44:14 nonaka Exp $	*/
 
 /*-
  * Copyright (c) 2000, 2008 The NetBSD Foundation, Inc.
@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: lapic.c,v 1.58 2017/05/23 08:54:39 nonaka Exp $");
+__KERNEL_RCSID(0, "$NetBSD: lapic.c,v 1.60 2017/07/13 00:44:14 nonaka Exp $");
 
 #include "acpica.h"
 #include "ioapic.h"
@@ -235,10 +235,13 @@ lapic_enable_x2apic(void)
 bool
 lapic_is_x2apic(void)
 {
-	uint64_t r;
+	uint64_t msr;
 
-	r = rdmsr(MSR_APICBASE);
-	return (r & (APICBASE_EN | APICBASE_EXTD)) == (APICBASE_EN | APICBASE_EXTD);
+	if (!ISSET(cpu_feature[0], CPUID_APIC) ||
+	    rdmsr_safe(MSR_APICBASE, &msr) == EFAULT)
+		return false;
+	return (msr & (APICBASE_EN | APICBASE_EXTD)) ==
+	    (APICBASE_EN | APICBASE_EXTD);
 }
 
 /*

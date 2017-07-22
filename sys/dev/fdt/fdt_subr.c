@@ -1,4 +1,4 @@
-/* $NetBSD: fdt_subr.c,v 1.13 2017/06/02 01:07:53 jmcneill Exp $ */
+/* $NetBSD: fdt_subr.c,v 1.17 2017/07/19 20:18:07 jmcneill Exp $ */
 
 /*-
  * Copyright (c) 2015 Jared D. McNeill <jmcneill@invisible.ca>
@@ -27,11 +27,10 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: fdt_subr.c,v 1.13 2017/06/02 01:07:53 jmcneill Exp $");
+__KERNEL_RCSID(0, "$NetBSD: fdt_subr.c,v 1.17 2017/07/19 20:18:07 jmcneill Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/kmem.h>
 
 #include <libfdt.h>
 #include <dev/fdt/fdtvar.h>
@@ -108,22 +107,15 @@ int
 fdtbus_get_phandle(int phandle, const char *prop)
 {
 	u_int phandle_ref;
-	u_int *buf;
+	const u_int *buf;
 	int len;
 
-	len = OF_getproplen(phandle, prop);
-	if (len < sizeof(phandle_ref))
+	buf = fdt_getprop(fdtbus_get_data(),
+	    fdtbus_phandle2offset(phandle), prop, &len);
+	if (buf == NULL || len < sizeof(phandle_ref))
 		return -1;
 
-	buf = kmem_alloc(len, KM_SLEEP);
-
-	if (OF_getprop(phandle, prop, buf, len) != len) {
-		kmem_free(buf, len);
-		return -1;
-	}
-
-	phandle_ref = fdt32_to_cpu(buf[0]);
-	kmem_free(buf, len);
+	phandle_ref = be32dec(buf);
 
 	return fdtbus_get_phandle_from_native(phandle_ref);
 }
@@ -405,4 +397,40 @@ fdtbus_status_okay(int phandle)
 		return true;
 
 	return strncmp(prop, "ok", 2) == 0;
+}
+
+const void *
+fdtbus_get_prop(int phandle, const char *prop, int *plen)
+{
+	const int off = fdtbus_phandle2offset(phandle);
+
+	return fdt_getprop(fdtbus_get_data(), off, prop, plen);
+}
+
+const char *
+fdtbus_get_string(int phandle, const char *prop)
+{
+	const int off = fdtbus_phandle2offset(phandle);
+
+	return fdt_getprop(fdtbus_get_data(), off, prop, NULL);
+}
+
+const char *
+fdtbus_get_string_index(int phandle, const char *prop, u_int index)
+{
+	const char *names, *name;
+	int len, cur;
+
+	if ((len = OF_getproplen(phandle, prop)) < 0)
+		return NULL;
+
+	names = fdtbus_get_string(phandle, prop);
+
+	for (name = names, cur = 0; len > 0;
+	     name += strlen(name) + 1, cur++) {
+		if (index == cur)
+			return name;
+	}
+
+	return NULL;
 }

@@ -1,4 +1,4 @@
-/*	$NetBSD: c_sh.c,v 1.16 2016/10/11 06:31:07 dholland Exp $	*/
+/*	$NetBSD: c_sh.c,v 1.23 2017/06/30 04:41:19 kamil Exp $	*/
 
 /*
  * built-in Bourne commands
@@ -6,14 +6,15 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: c_sh.c,v 1.16 2016/10/11 06:31:07 dholland Exp $");
+__RCSID("$NetBSD: c_sh.c,v 1.23 2017/06/30 04:41:19 kamil Exp $");
 #endif
 
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/times.h>
+#include <time.h>
 
 #include "sh.h"
-#include "ksh_stat.h" 	/* umask() */
-#include "ksh_time.h"
-#include "ksh_times.h"
 
 static	char *clocktos ARGS((clock_t t));
 
@@ -331,9 +332,6 @@ c_read(wp)
 			while (1) {
 				c = shf_getc(shf);
 				if (c == '\0'
-#ifdef OS2
-				    || c == '\r'
-#endif /* OS2 */
 				    )
 					continue;
 				if (c == EOF && shf_error(shf)
@@ -466,7 +464,7 @@ c_eval(wp)
 		exstat = subst_exstat;
 	}
 
-	rv = shell(s, FALSE);
+	rv = shell(s, false);
 	afree(s, ATEMP);
 	return rv;
 }
@@ -517,13 +515,13 @@ c_trap(wp)
 	 * command 'exit' isn't confused with the pseudo-signal
 	 * 'EXIT'.
 	 */
-	s = (gettrap(*wp, FALSE) == NULL) ? *wp++ : NULL; /* get command */
+	s = (gettrap(*wp, false) == NULL) ? *wp++ : NULL; /* get command */
 	if (s != NULL && s[0] == '-' && s[1] == '\0')
 		s = NULL;
 
 	/* set/clear traps */
 	while (*wp != NULL) {
-		p = gettrap(*wp++, TRUE);
+		p = gettrap(*wp++, true);
 		if (p == NULL) {
 			bi_errorf("bad signal %s", wp[-1]);
 			return 1;
@@ -548,7 +546,7 @@ c_exitreturn(wp)
 	if (arg) {
 	    if (!getn(arg, &n)) {
 		    exstat = 1;
-		    warningf(TRUE, "%s: bad number", arg);
+		    warningf(true, "%s: bad number", arg);
 	    } else
 		    exstat = n;
 	}
@@ -614,7 +612,7 @@ c_brkcont(wp)
 		 * scripts, but don't generate an error (ie, keep going).
 		 */
 		if (n == quit) {
-			warningf(TRUE, "%s: cannot %s", wp[0], wp[0]);
+			warningf(true, "%s: cannot %s", wp[0], wp[0]);
 			return 0;
 		}
 		/* POSIX says if n is too big, the last enclosing loop
@@ -623,7 +621,7 @@ c_brkcont(wp)
 		 */
 		if (last_ep)
 			last_ep->flags &= ~EF_BRKCONT_PASS;
-		warningf(TRUE, "%s: can only %s %d level(s)",
+		warningf(true, "%s: can only %s %d level(s)",
 			wp[0], wp[0], n - quit);
 	}
 
@@ -709,7 +707,7 @@ c_times(wp)
 {
 	struct tms all;
 
-	(void) ksh_times(&all);
+	times(&all);
 	shprintf("Shell: %8ss user ", clocktos(all.tms_utime));
 	shprintf("%8ss system\n", clocktos(all.tms_stime));
 	shprintf("Kids:  %8ss user ", clocktos(all.tms_cutime));
@@ -736,7 +734,7 @@ timex(t, f)
 	extern clock_t j_usrtime, j_systime; /* computed by j_wait */
 	char opts[1];
 
-	t0t = ksh_times(&t0);
+	t0t = times(&t0);
 	if (t->left) {
 		/*
 		 * Two ways of getting cpu usage of a command: just use t0
@@ -752,7 +750,7 @@ timex(t, f)
 		opts[0] = 0;
 		rv = execute(t->left, f | XTIME);
 		tf |= opts[0];
-		t1t = ksh_times(&t1);
+		t1t = times(&t1);
 	} else
 		tf = TF_NOARGS;
 
@@ -905,13 +903,5 @@ const struct builtin shbuiltins [] = {
 	{"ulimit", c_ulimit},
 	{"+umask", c_umask},
 	{"*=unset", c_unset},
-#ifdef OS2
-	/* In OS2, the first line of a file can be "extproc name", which
-	 * tells the command interpreter (cmd.exe) to use name to execute
-	 * the file.  For this to be useful, ksh must ignore commands
-	 * starting with extproc and this does the trick...
-	 */
-	{"extproc", c_label},
-#endif /* OS2 */
 	{NULL, NULL}
 };

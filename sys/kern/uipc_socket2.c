@@ -1,4 +1,4 @@
-/*	$NetBSD: uipc_socket2.c,v 1.124 2016/10/02 19:26:46 christos Exp $	*/
+/*	$NetBSD: uipc_socket2.c,v 1.126 2017/07/06 17:42:39 christos Exp $	*/
 
 /*-
  * Copyright (c) 2008 The NetBSD Foundation, Inc.
@@ -58,7 +58,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: uipc_socket2.c,v 1.124 2016/10/02 19:26:46 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: uipc_socket2.c,v 1.126 2017/07/06 17:42:39 christos Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_mbuftrace.h"

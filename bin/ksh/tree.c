@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.6 2005/06/26 19:09:00 christos Exp $	*/
+/*	$NetBSD: tree.c,v 1.8 2017/06/30 02:51:14 kamil Exp $	*/
 
 /*
  * command tree climbing
@@ -6,7 +6,7 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: tree.c,v 1.6 2005/06/26 19:09:00 christos Exp $");
+__RCSID("$NetBSD: tree.c,v 1.8 2017/06/30 02:51:14 kamil Exp $");
 #endif
 
 
@@ -375,19 +375,11 @@ tputS(wp, shf)
  */
 /* VARARGS */
 int
-#ifdef HAVE_PROTOTYPES
 fptreef(struct shf *shf, int indent, const char *fmt, ...)
-#else
-fptreef(shf, indent, fmt, va_alist)
-  struct shf *shf;
-  int indent;
-  const char *fmt;
-  va_dcl
-#endif
 {
   va_list	va;
 
-  SH_VA_START(va, fmt);
+  va_start(va, fmt);
 
   vfptreef(shf, indent, fmt, va);
   va_end(va);
@@ -396,22 +388,14 @@ fptreef(shf, indent, fmt, va_alist)
 
 /* VARARGS */
 char *
-#ifdef HAVE_PROTOTYPES
 snptreef(char *s, int n, const char *fmt, ...)
-#else
-snptreef(s, n, fmt, va_alist)
-  char *s;
-  int n;
-  const char *fmt;
-  va_dcl
-#endif
 {
   va_list va;
   struct shf shf;
 
   shf_sopen(s, n, SHF_WR | (s ? 0 : SHF_DYNAMIC), &shf);
 
-  SH_VA_START(va, fmt);
+  va_start(va, fmt);
   vfptreef(&shf, 0, fmt, va);
   va_end(va);
 

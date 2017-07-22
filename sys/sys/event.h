@@ -1,4 +1,4 @@
-/*	$NetBSD: event.h,v 1.28 2017/06/02 19:44:06 kamil Exp $	*/
+/*	$NetBSD: event.h,v 1.30 2017/07/01 20:08:56 christos Exp $	*/
 
 /*-
  * Copyright (c) 1999,2000,2001 Jonathan Lemon <jlemon@FreeBSD.org>
@@ -54,12 +54,13 @@ struct kevent {
 	intptr_t	udata;		/* opaque user data identifier */
 };
 
-#define EV_SET(kevp, a, b, c, d, e, f)					\
-	EV_SET_((kevp), (a), (b), (c), (d), (e), __CAST(intptr_t, (f)))
+#define EV_SET(kevp, ident, filter, flags, fflags, data, udata)	\
+    _EV_SET((kevp), __CAST(uintptr_t, (ident)), (filter), (flags), \
+    (fflags), (data), __CAST(intptr_t, (udata)))
 
 static __inline void
-EV_SET_(struct kevent *_kevp, uintptr_t _ident, uint32_t _filter,
-       uint32_t _flags, uint32_t _fflags, int64_t _data, intptr_t _udata)
+_EV_SET(struct kevent *_kevp, uintptr_t _ident, uint32_t _filter,
+    uint32_t _flags, uint32_t _fflags, int64_t _data, intptr_t _udata)
 {
 	_kevp->ident = _ident;
 	_kevp->filter = _filter;
@@ -187,10 +188,10 @@ struct knote {
 	TAILQ_ENTRY(knote)	kn_tqe;		/* q: for struct kqueue */
 	struct kqueue		*kn_kq;		/* q: which queue we are on */
 	struct kevent		kn_kevent;
-	uint32_t		kn_status;
-	uint32_t		kn_sfflags;	/*   saved filter flags */
-	uintptr_t		kn_sdata;	/*   saved data field */
-	void			*kn_obj;	/*   pointer to monitored obj */
+	uint32_t		kn_status;	/* q: flags below */
+	uint32_t		kn_sfflags;	/*    saved filter flags */
+	uintptr_t		kn_sdata;	/*    saved data field */
+	void			*kn_obj;	/*    monitored obj */
 	const struct filterops	*kn_fop;
 	struct kfilter		*kn_kfilter;
 	void 			*kn_hook;
@@ -200,7 +201,8 @@ struct knote {
 #define	KN_DISABLED	0x04U			/* event is disabled */
 #define	KN_DETACHED	0x08U			/* knote is detached */
 #define	KN_MARKER	0x10U			/* is a marker */
-#define KN_BUSY		0x20U			/* is being scanned */
+#define	KN_BUSY		0x20U			/* is being scanned */
+/* Toggling KN_BUSY also requires kn_kq->kq_fdp->fd_lock. */
 
 #define	kn_id		kn_kevent.ident
 #define	kn_filter	kn_kevent.filter

@@ -1,4 +1,4 @@
-/*	$NetBSD: eval.c,v 1.16 2016/10/04 15:09:03 joerg Exp $	*/
+/*	$NetBSD: eval.c,v 1.22 2017/06/30 04:41:19 kamil Exp $	*/
 
 /*
  * Expansion - quoting, separation, substitution, globbing
@@ -6,15 +6,15 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: eval.c,v 1.16 2016/10/04 15:09:03 joerg Exp $");
+__RCSID("$NetBSD: eval.c,v 1.22 2017/06/30 04:41:19 kamil Exp $");
 #endif
 
+#include <sys/stat.h>
 #include <stdint.h>
 #include <pwd.h>
 
 #include "sh.h"
 #include "ksh_dir.h"
-#include "ksh_stat.h"
 
 /*
  * string expansion
@@ -95,17 +95,10 @@ eval(ap, f)
 		return ap;
 	XPinit(w, 32);
 	XPput(w, NULL);		/* space for shell name */
-#ifdef	SHARPBANG
-	XPput(w, NULL);		/* and space for one arg */
-#endif
 	while (*ap != NULL)
 		expand(*ap++, &w, f);
 	XPput(w, NULL);
-#ifdef	SHARPBANG
-	return (char **) XPclose(w) + 2;
-#else
 	return (char **) XPclose(w) + 1;
-#endif
 }
 
 /*
@@ -887,7 +880,7 @@ comsub(xp, cp)
 		shf = shf_fdopen(pv[0], SHF_RD, (struct shf *) 0);
 		ofd1 = savefd(1, 0);	/* fd 1 may be closed... */
 		if (pv[1] != 1) {
-			ksh_dup2(pv[1], 1, FALSE);
+			ksh_dup2(pv[1], 1, false);
 			close(pv[1]);
 		}
 		execute(t, XFORK|XXCOM|XPIPEO);
@@ -917,7 +910,7 @@ trimsub(str, pat, how)
 	  case '#':		/* shortest at beginning */
 		for (p = str; p <= end; p++) {
 			c = *p; *p = '\0';
-			if (gmatch(str, pat, FALSE)) {
+			if (gmatch(str, pat, false)) {
 				*p = c;
 				return p;
 			}
@@ -927,7 +920,7 @@ trimsub(str, pat, how)
 	  case '#'|0x80:	/* longest match at beginning */
 		for (p = end; p >= str; p--) {
 			c = *p; *p = '\0';
-			if (gmatch(str, pat, FALSE)) {
+			if (gmatch(str, pat, false)) {
 				*p = c;
 				return p;
 			}
@@ -936,13 +929,13 @@ trimsub(str, pat, how)
 		break;
 	  case '%':		/* shortest match at end */
 		for (p = end; p >= str; p--) {
-			if (gmatch(p, pat, FALSE))
+			if (gmatch(p, pat, false))
 				return str_nsave(str, p - str, ATEMP);
 		}
 		break;
 	  case '%'|0x80:	/* longest match at end */
 		for (p = str; p <= end; p++) {
-			if (gmatch(p, pat, FALSE))
+			if (gmatch(p, pat, false))
 				return str_nsave(str, p - str, ATEMP);
 		}
 		break;
@@ -1062,15 +1055,7 @@ globit(xs, xpp, sp, wp, check)
 				*xp = '\0';
 			}
 		}
-#ifdef OS2 /* Done this way to avoid bug in gcc 2.7.2... */
-    /* Ugly kludge required for command
-     * completion - see how search_access()
-     * is implemented for OS/2...
-     */
-# define KLUDGE_VAL	4
-#else /* OS2 */
 # define KLUDGE_VAL	0
-#endif /* OS2 */
 		XPput(*wp, str_nsave(Xstring(*xs, xp), Xlength(*xs, xp)
 			+ KLUDGE_VAL, ATEMP));
 		return;
@@ -1121,7 +1106,7 @@ globit(xs, xpp, sp, wp, check)
 		while ((d = readdir(dirp)) != NULL) {
 			name = d->d_name;
 			if ((*name == '.' && *sp != '.')
-			    || !gmatch(name, sp, TRUE))
+			    || !gmatch(name, sp, true))
 				continue;
 
 			len = NLENGTH(d) + 1;
@@ -1296,10 +1281,6 @@ homedir(name)
 
 	ap = tenter(&homedirs, name, hash(name));
 	if (!(ap->flag & ISSET)) {
-#ifdef OS2
-		/* No usernames in OS2 - punt */
-		return NULL;
-#else /* OS2 */
 		struct passwd *pw;
 		size_t n;
 
@@ -1315,7 +1296,6 @@ homedir(name)
 			ap->val.s = str_save(pw->pw_dir, APERM);
 		}
 		ap->flag |= DEFINED|ISSET|ALLOC;
-#endif /* OS2 */
 	}
 	return ap->val.s;
 }

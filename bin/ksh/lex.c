@@ -1,4 +1,4 @@
-/*	$NetBSD: lex.c,v 1.15 2011/10/16 17:12:11 joerg Exp $	*/
+/*	$NetBSD: lex.c,v 1.21 2017/06/30 04:41:19 kamil Exp $	*/
 
 /*
  * lexical analysis and source input
@@ -6,7 +6,7 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: lex.c,v 1.15 2011/10/16 17:12:11 joerg Exp $");
+__RCSID("$NetBSD: lex.c,v 1.21 2017/06/30 04:41:19 kamil Exp $");
 #endif
 
 
@@ -170,7 +170,7 @@ yylex(cf)
 		  case SBASE:
 			if (c == '[' && (cf & (VARASN|ARRAYVAR))) {
 				*wp = EOS; /* temporary */
-				if (is_wdvarname(Xstring(ws, wp), FALSE))
+				if (is_wdvarname(Xstring(ws, wp), false))
 				{
 					char *p, *tmp;
 
@@ -220,12 +220,6 @@ yylex(cf)
 			switch (c) {
 			  case '\\':
 				c = getsc();
-#ifdef OS2
-				if (isalnum((unsigned char)c)) {
-					*wp++ = CHAR, *wp++ = '\\';
-					*wp++ = CHAR, *wp++ = c;
-				} else
-#endif
 				if (c) /* trailing \ is lost */
 					*wp++ = QCHAR, *wp++ = c;
 				break;
@@ -842,13 +836,7 @@ readhere(iop)
 }
 
 void
-#ifdef HAVE_PROTOTYPES
 yyerror(const char *fmt, ...)
-#else
-yyerror(fmt, va_alist)
-	const char *fmt;
-	va_dcl
-#endif
 {
 	va_list va;
 
@@ -857,8 +845,8 @@ yyerror(fmt, va_alist)
 		source = source->next;
 	source->str = null;	/* zap pending input */
 
-	error_prefix(TRUE);
-	SH_VA_START(va, fmt);
+	error_prefix(true);
+	va_start(va, fmt);
 	shf_vfprintf(shl_out, fmt, va);
 	va_end(va);
 	errorf("%s", null);

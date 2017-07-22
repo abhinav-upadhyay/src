@@ -1,4 +1,4 @@
-/*	$NetBSD: x86_machdep.c,v 1.91 2017/04/14 04:43:47 kamil Exp $	*/
+/*	$NetBSD: x86_machdep.c,v 1.93 2017/06/14 12:27:24 maxv Exp $	*/
 
 /*-
  * Copyright (c) 2002, 2006, 2007 YAMAMOTO Takashi,
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: x86_machdep.c,v 1.91 2017/04/14 04:43:47 kamil Exp $");
+__KERNEL_RCSID(0, "$NetBSD: x86_machdep.c,v 1.93 2017/06/14 12:27:24 maxv Exp $");
 
 #include "opt_modular.h"
 #include "opt_physmem.h"
@@ -514,21 +514,12 @@ static int
 x86_add_cluster(uint64_t seg_start, uint64_t seg_end, uint32_t type)
 {
 	extern struct extent *iomem_ex;
+	const uint64_t endext = MAXIOMEM + 1;
 	uint64_t new_physmem = 0;
 	phys_ram_seg_t *cluster;
 	int i;
 
-#ifdef i386
-#ifdef PAE
-#define TOPLIMIT	0x1000000000ULL /* 64GB */
-#else
-#define TOPLIMIT	0x100000000ULL	/* 4GB */
-#endif
-#else
-#define TOPLIMIT	0x100000000000ULL /* 16TB */
-#endif
-
-	if (seg_end > TOPLIMIT) {
+	if (seg_end > MAXPHYSMEM) {
 		aprint_verbose("WARNING: skipping large memory map entry: "
 		    "0x%"PRIx64"/0x%"PRIx64"/0x%x\n",
 		    seg_start, (seg_end - seg_start), type);
@@ -538,7 +529,7 @@ x86_add_cluster(uint64_t seg_start, uint64_t seg_end, uint32_t type)
 	/*
 	 * XXX: Chop the last page off the size so that it can fit in avail_end.
 	 */
-	if (seg_end == TOPLIMIT)
+	if (seg_end == MAXPHYSMEM)
 		seg_end -= PAGE_SIZE;
 
 	if (seg_end <= seg_start)
@@ -556,15 +547,19 @@ x86_add_cluster(uint64_t seg_start, uint64_t seg_end, uint32_t type)
 	}
 
 	/*
-	 * Allocate the physical addresses used by RAM from the iomem extent
-	 * map. This is done before the addresses are page rounded just to make
+	 * This cluster is used by RAM. If it is included in the iomem extent,
+	 * allocate it from there, so that we won't unintentionally reuse it
+	 * later with extent_alloc_region. A way to avoid collision (with UVM
+	 * for example).
+	 *
+	 * This is done before the addresses are page rounded just to make
 	 * sure we get them all.
 	 */
-	if (seg_start < 0x100000000ULL) {
+	if (seg_start < endext) {
 		uint64_t io_end;
 
-		if (seg_end > 0x100000000ULL)
-			io_end = 0x100000000ULL;
+		if (seg_end > endext)
+			io_end = endext;
 		else
 			io_end = seg_end;
 

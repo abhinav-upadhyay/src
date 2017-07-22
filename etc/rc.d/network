@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# $NetBSD: network,v 1.71 2016/03/06 18:50:06 christos Exp $
+# $NetBSD: network,v 1.73 2017/07/06 09:49:39 kre Exp $
 #
 
 # PROVIDE: network

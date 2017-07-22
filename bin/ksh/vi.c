@@ -1,4 +1,4 @@
-/*	$NetBSD: vi.c,v 1.13 2016/02/03 05:26:16 christos Exp $	*/
+/*	$NetBSD: vi.c,v 1.18 2017/06/30 04:41:19 kamil Exp $	*/
 
 /*
  *	vi command editing
@@ -9,15 +9,15 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: vi.c,v 1.13 2016/02/03 05:26:16 christos Exp $");
+__RCSID("$NetBSD: vi.c,v 1.18 2017/06/30 04:41:19 kamil Exp $");
 #endif
 
 #include "config.h"
 #ifdef VI
 
 #include "sh.h"
+#include <sys/stat.h>
 #include <ctype.h>
-#include "ksh_stat.h"		/* completion */
 #include "edit.h"
 
 #define CMDLEN		1024
@@ -226,7 +226,7 @@ x_vi(buf, len)
 				x_vi_zotc(c);
 				x_flush();
 				trapsig(c == edchars.intr ? SIGINT : SIGQUIT);
-				x_mode(FALSE);
+				x_mode(false);
 				unwind(LSHELL);
 			} else if (c == edchars.eof && state != VVERSION) {
 				if (es->linelen == 0) {
@@ -274,32 +274,8 @@ vi_hook(ch)
 			}
 			switch (vi_insert(ch)) {
 			case -1:
-#ifdef OS2
-				/* Arrow keys generate 0xe0X, where X is H.. */
-				state = VCMD;
-				argc1 = 1;
-				switch (x_getc()) {
-				  case 'H':
-					*curcmd='k';
-					break;
-				  case 'K':
-					*curcmd='h';
-					break;
-				  case 'P':
-					*curcmd='j';
-					break;
-				  case 'M':
-					*curcmd='l';
-					break;
-				  default:
-					vi_error();
-					state = VNORMAL;
-				}
-				break;
-#else /* OS2 */
 				vi_error();
 				state = VNORMAL;
-#endif /* OS2 */
 				break;
 			case 0:
 				if (state == VLIT) {
@@ -657,9 +633,6 @@ vi_insert(ch)
 		saved_inslen = 0;
 	switch (ch) {
 
-#ifdef OS2
-	case 224:	 /* function key prefix */
-#endif /* OS2 */
 	case '\0':
 		return -1;
 

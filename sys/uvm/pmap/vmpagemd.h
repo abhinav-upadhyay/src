@@ -1,4 +1,4 @@
-/*	$NetBSD: vmpagemd.h,v 1.4 2017/06/07 07:06:26 skrll Exp $	*/
+/*	$NetBSD: vmpagemd.h,v 1.7 2017/06/24 05:39:53 skrll Exp $	*/
 
 /*-
  * Copyright (c) 2011 The NetBSD Foundation, Inc.
@@ -35,8 +35,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _COMMON_PMAP_TLB_VMPAGEMD_H_
-#define _COMMON_PMAP_TLB_VMPAGEMD_H_
+#ifndef _UVM_PMAP_VMPAGEMD_H_
+#define _UVM_PMAP_VMPAGEMD_H_
 
 #ifdef _LOCORE
 #error use assym.h instead
@@ -60,7 +60,7 @@ typedef struct pv_entry {
 	struct pv_entry *pv_next;
 	struct pmap *pv_pmap;
 	vaddr_t pv_va;
-#define	PV_KENTER		0x0001
+#define	PV_KENTER		__BIT(0)
 } *pv_entry_t;
 
 #ifndef _MODULE
@@ -86,9 +86,9 @@ typedef struct pv_entry {
 
 struct vm_page_md {
 	volatile unsigned long mdpg_attrs;	/* page attributes */
-	struct pv_entry mdpg_first;	/* pv_entry first */
+	struct pv_entry mdpg_first;		/* pv_entry first */
 #if defined(MULTIPROCESSOR) || defined(MODULAR) || defined(_MODULE)
-	kmutex_t *mdpg_lock;		/* pv list lock */
+	kmutex_t *mdpg_lock;			/* pv list lock */
 #endif
 };
 
@@ -158,4 +158,4 @@ do {									\
 
 #endif /* _MODULE */
 
-#endif /* __COMMON_PMAP_TLB_VMPAGEMD_H_ */
+#endif /* _UVM_PMAP_VMPAGEMD_H_ */

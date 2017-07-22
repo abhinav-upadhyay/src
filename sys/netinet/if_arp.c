@@ -1,4 +1,4 @@
-/*	$NetBSD: if_arp.c,v 1.250 2017/05/18 06:33:11 ozaki-r Exp $	*/
+/*	$NetBSD: if_arp.c,v 1.253 2017/06/27 12:21:54 roy Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2000, 2008 The NetBSD Foundation, Inc.
@@ -68,7 +68,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_arp.c,v 1.250 2017/05/18 06:33:11 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_arp.c,v 1.253 2017/06/27 12:21:54 roy Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_ddb.h"
@@ -760,8 +760,13 @@ notfound:
 		IF_AFDATA_WUNLOCK(ifp);
 		if (la == NULL)
 			ARP_STATINC(ARP_STAT_ALLOCFAIL);
-		else
+		else {
+			struct sockaddr_in sin;
+
 			arp_init_llentry(ifp, la);
+			sockaddr_in_init(&sin, &la->r_l3addr.addr4, 0);
+			rt_clonedmsg(sintosa(&sin), ifp, rt);
+		}
 	} else if (LLE_TRY_UPGRADE(la) == 0) {
 		create_lookup = "lookup";
 		LLE_RUNLOCK(la);
@@ -1020,6 +1025,16 @@ in_arpinput(struct mbuf *m)
 	ah = mtod(m, struct arphdr *);
 	op = ntohs(ah->ar_op);
 
+	if (ah->ar_pln != sizeof(struct in_addr))
+		goto out;
+
+	ifp = if_get_bylla(ar_sha(ah), ah->ar_hln, &psref);
+	if (ifp) {
+		if_put(ifp, &psref);
+		ARP_STATINC(ARP_STAT_RCVLOCALSHA);
+		goto out;	/* it's from me, ignore it. */
+	}
+
 	rcvif = ifp = m_get_rcvif_psref(m, &psref);
 	if (__predict_false(rcvif == NULL))
 		goto drop;
@@ -1040,9 +1055,6 @@ in_arpinput(struct mbuf *m)
 	default:
 		break;
 	}
-
-	if (ah->ar_pln != sizeof(struct in_addr))
-		goto drop;
 
 	memcpy(&isaddr, ar_spa(ah), sizeof(isaddr));
 	memcpy(&itaddr, ar_tpa(ah), sizeof(itaddr));
@@ -1128,12 +1140,6 @@ in_arpinput(struct mbuf *m)
 	}
 
 	myaddr = ia->ia_addr.sin_addr;
-
-	/* XXX checks for bridge case? */
-	if (!memcmp(ar_sha(ah), CLLADDR(ifp->if_sadl), ifp->if_addrlen)) {
-		ARP_STATINC(ARP_STAT_RCVLOCALSHA);
-		goto out;	/* it's from me, ignore it. */
-	}
 
 	/* XXX checks for bridge case? */
 	if (!memcmp(ar_sha(ah), ifp->if_broadcastaddr, ifp->if_addrlen)) {
@@ -1467,41 +1473,13 @@ arpioctl(u_long cmd, void *data)
 void
 arp_ifinit(struct ifnet *ifp, struct ifaddr *ifa)
 {
-	struct in_addr *ip;
 	struct in_ifaddr *ia = (struct in_ifaddr *)ifa;
-
-	/*
-	 * Warn the user if another station has this IP address,
-	 * but only if the interface IP address is not zero.
-	 */
-	ip = &IA_SIN(ifa)->sin_addr;
-	if (!in_nullhost(*ip) &&
-	    (ia->ia4_flags & (IN_IFF_NOTREADY | IN_IFF_DETACHED)) == 0) {
-		struct llentry *lle;
-
-		/*
-		 * interface address is considered static entry
-		 * because the output of the arp utility shows
-		 * that L2 entry as permanent
-		 */
-		IF_AFDATA_WLOCK(ifp);
-		lle = lla_create(LLTABLE(ifp), (LLE_IFADDR | LLE_STATIC),
-				 (struct sockaddr *)IA_SIN(ifa));
-		IF_AFDATA_WUNLOCK(ifp);
-		if (lle == NULL)
-			log(LOG_INFO, "%s: cannot create arp entry for"
-			    " interface address\n", __func__);
-		else {
-			arp_init_llentry(ifp, lle);
-			LLE_RUNLOCK(lle);
-		}
-	}
 
 	ifa->ifa_rtrequest = arp_rtrequest;
 	ifa->ifa_flags |= RTF_CONNECTED;
 
 	/* ARP will handle DAD for this address. */
-	if (in_nullhost(*ip)) {
+	if (in_nullhost(IA_SIN(ifa)->sin_addr)) {
 		if (ia->ia_dad_stop != NULL)	/* safety */
 			ia->ia_dad_stop(ifa);
 		ia->ia_dad_start = NULL;

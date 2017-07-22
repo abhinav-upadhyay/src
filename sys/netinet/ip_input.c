@@ -1,4 +1,4 @@
-/*	$NetBSD: ip_input.c,v 1.355 2017/06/01 02:45:14 chs Exp $	*/
+/*	$NetBSD: ip_input.c,v 1.359 2017/07/19 07:24:46 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -91,11 +91,10 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ip_input.c,v 1.355 2017/06/01 02:45:14 chs Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ip_input.c,v 1.359 2017/07/19 07:24:46 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
-#include "opt_compat_netbsd.h"
 #include "opt_gateway.h"
 #include "opt_ipsec.h"
 #include "opt_mrouting.h"
@@ -172,11 +171,6 @@ __KERNEL_RCSID(0, "$NetBSD: ip_input.c,v 1.355 2017/06/01 02:45:14 chs Exp $");
 #endif
 #ifndef IPMTUDISCTIMEOUT
 #define IPMTUDISCTIMEOUT (10 * 60)	/* as per RFC 1191 */
-#endif
-
-#ifdef COMPAT_50
-#include <compat/sys/time.h>
-#include <compat/sys/socket.h>
 #endif
 
 /*
@@ -758,7 +752,7 @@ ip_input(struct mbuf *m)
 			return;
 		}
 #ifdef IPSEC
-		/* Perform IPsec, if any. */
+		/* Check the security policy (SP) for the packet */
 		if (ipsec_used) {
 			SOFTNET_LOCK();
 			if (ipsec4_input(m, IP_FORWARDING |
@@ -1521,46 +1515,39 @@ ip_savecontrol(struct inpcb *inp, struct mbuf **mp, struct ip *ip,
     struct mbuf *m)
 {
 	struct socket *so = inp->inp_socket;
-	ifnet_t *ifp;
 	int inpflags = inp->inp_flags;
-	struct psref psref;
 
-	ifp = m_get_rcvif_psref(m, &psref);
-	if (__predict_false(ifp == NULL))
-		return; /* XXX should report error? */
+	if (SOOPT_TIMESTAMP(so->so_options))
+		mp = sbsavetimestamp(so->so_options, m, mp);
 
-	if (so->so_options & SO_TIMESTAMP
-#ifdef SO_OTIMESTAMP
-	    || so->so_options & SO_OTIMESTAMP
-#endif
-	    ) {
-		struct timeval tv;
-
-		microtime(&tv);
-#ifdef SO_OTIMESTAMP
-		if (so->so_options & SO_OTIMESTAMP) {
-			struct timeval50 tv50;
-			timeval_to_timeval50(&tv, &tv50);
-			*mp = sbcreatecontrol((void *) &tv50, sizeof(tv50),
-			    SCM_OTIMESTAMP, SOL_SOCKET);
-		} else
-#endif
-		*mp = sbcreatecontrol((void *) &tv, sizeof(tv),
-		    SCM_TIMESTAMP, SOL_SOCKET);
-		if (*mp)
-			mp = &(*mp)->m_next;
-	}
 	if (inpflags & INP_RECVDSTADDR) {
-		*mp = sbcreatecontrol((void *) &ip->ip_dst,
+		*mp = sbcreatecontrol(&ip->ip_dst,
 		    sizeof(struct in_addr), IP_RECVDSTADDR, IPPROTO_IP);
 		if (*mp)
 			mp = &(*mp)->m_next;
 	}
+
+	if (inpflags & INP_RECVTTL) {
+		*mp = sbcreatecontrol(&ip->ip_ttl,
+		    sizeof(uint8_t), IP_RECVTTL, IPPROTO_IP);
+		if (*mp)
+			mp = &(*mp)->m_next;
+	}
+
+	struct psref psref;
+	ifnet_t *ifp = m_get_rcvif_psref(m, &psref);
+	if (__predict_false(ifp == NULL)) {
+#ifdef DIAGNOSTIC
+		printf("%s: missing receive interface\n", __func__);
+#endif
+		return; /* XXX should report error? */
+	}
+
 	if (inpflags & INP_RECVPKTINFO) {
 		struct in_pktinfo ipi;
 		ipi.ipi_addr = ip->ip_src;
 		ipi.ipi_ifindex = ifp->if_index;
-		*mp = sbcreatecontrol((void *) &ipi,
+		*mp = sbcreatecontrol(&ipi,
 		    sizeof(ipi), IP_RECVPKTINFO, IPPROTO_IP);
 		if (*mp)
 			mp = &(*mp)->m_next;
@@ -1569,7 +1556,7 @@ ip_savecontrol(struct inpcb *inp, struct mbuf **mp, struct ip *ip,
 		struct in_pktinfo ipi;
 		ipi.ipi_addr = ip->ip_dst;
 		ipi.ipi_ifindex = ifp->if_index;
-		*mp = sbcreatecontrol((void *) &ipi,
+		*mp = sbcreatecontrol(&ipi,
 		    sizeof(ipi), IP_PKTINFO, IPPROTO_IP);
 		if (*mp)
 			mp = &(*mp)->m_next;
@@ -1580,12 +1567,6 @@ ip_savecontrol(struct inpcb *inp, struct mbuf **mp, struct ip *ip,
 		sockaddr_dl_init(&sdl, sizeof(sdl), ifp->if_index, 0, NULL, 0,
 		    NULL, 0);
 		*mp = sbcreatecontrol(&sdl, sdl.sdl_len, IP_RECVIF, IPPROTO_IP);
-		if (*mp)
-			mp = &(*mp)->m_next;
-	}
-	if (inpflags & INP_RECVTTL) {
-		*mp = sbcreatecontrol((void *) &ip->ip_ttl,
-		    sizeof(uint8_t), IP_RECVTTL, IPPROTO_IP);
 		if (*mp)
 			mp = &(*mp)->m_next;
 	}

@@ -1,4 +1,4 @@
-/*	$NetBSD: rtld.h,v 1.126 2016/11/30 19:43:32 christos Exp $	 */
+/*	$NetBSD: rtld.h,v 1.129 2017/07/11 15:21:35 joerg Exp $	 */
 
 /*
  * Copyright 1996 John D. Polstra.
@@ -298,6 +298,7 @@ typedef struct Struct_Obj_Entry {
 	size_t		init_arraysz;	/* # of entries in it */
 	Elf_Addr	*fini_array;	/* start of fini array */
 	size_t		fini_arraysz;	/* # of entries in it */
+	size_t		cxa_refcount;	/* For TLS destructors. */
 #ifdef __ARM_EABI__
 	void		*exidx_start;
 	size_t		exidx_sz;
@@ -345,8 +346,6 @@ extern Elf_Sym _rtld_sym_zero;
 #define	RTLD_STATIC_TLS_RESERVATION	64
 
 /* rtld.c */
-
-/* We export these symbols using _rtld_symbol_lookup and is_exported. */
 __dso_public char *dlerror(void);
 __dso_public void *dlopen(const char *, int);
 __dso_public void *dlsym(void *, const char *);
@@ -357,6 +356,7 @@ __dso_public int dl_iterate_phdr(int (*)(struct dl_phdr_info *, size_t, void *),
     void *);
 
 __dso_public void *_dlauxinfo(void) __pure;
+__dso_public void __dl_cxa_refcount(void *addr, ssize_t delta);
 
 #if defined(__ARM_EABI__) && !defined(__ARM_DWARF_EH__)
 /*
@@ -416,7 +416,6 @@ Elf_Addr _rtld_resolve_ifunc(const Obj_Entry *, const Elf_Sym *);
 Obj_Entry *_rtld_load_library(const char *, const Obj_Entry *, int);
 
 /* symbol.c */
-bool _rtld_is_exported(const Elf_Sym *);
 unsigned long _rtld_elf_hash(const char *);
 const Elf_Sym *_rtld_symlook_obj(const char *, unsigned long,
     const Obj_Entry *, u_int, const Ver_Entry *);
@@ -432,9 +431,6 @@ const Elf_Sym *_rtld_symlook_default(const char *, unsigned long,
 const Elf_Sym *_rtld_symlook_needed(const char *, unsigned long,
     const Needed_Entry *, const Obj_Entry **, u_int, const Ver_Entry *,
     DoneList *, DoneList *);
-#ifdef COMBRELOC
-void _rtld_combreloc_reset(const Obj_Entry *);
-#endif
 
 /* symver.c */
 void _rtld_object_add_name(Obj_Entry *, const char *);

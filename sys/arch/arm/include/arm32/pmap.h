@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.h,v 1.147 2017/05/25 20:42:41 skrll Exp $	*/
+/*	$NetBSD: pmap.h,v 1.151 2017/07/11 20:42:17 skrll Exp $	*/
 
 /*
  * Copyright (c) 2002, 2003 Wasabi Systems, Inc.
@@ -488,7 +488,7 @@ extern int pmap_needs_pte_sync;
  * Finally, MEMC, GENERIC and XSCALE MMUs do not need PTE syncs.
  *
  * Use run time evaluation for all other cases.
- * 
+ *
  */
 #if (ARM_NMMUS == 1)
 #if (ARM_MMU_SA1 + ARM_MMU_V6 != 0)
@@ -728,12 +728,12 @@ extern void (*pmap_zero_page_func)(paddr_t);
  */
 #define	L1_S_PROT_U_generic	(L1_S_AP(AP_U))
 #define	L1_S_PROT_W_generic	(L1_S_AP(AP_W))
-#define	L1_S_PROT_RO_generic	(0)
+#define	L1_S_PROT_RO_generic	(L1_S_AP(AP_R))	/* AP_W == AP_R */
 #define	L1_S_PROT_MASK_generic	(L1_S_PROT_U|L1_S_PROT_W|L1_S_PROT_RO)
 
 #define	L1_S_PROT_U_xscale	(L1_S_AP(AP_U))
 #define	L1_S_PROT_W_xscale	(L1_S_AP(AP_W))
-#define	L1_S_PROT_RO_xscale	(0)
+#define	L1_S_PROT_RO_xscale	(L1_S_AP(AP_R))	/* AP_W == AP_R */
 #define	L1_S_PROT_MASK_xscale	(L1_S_PROT_U|L1_S_PROT_W|L1_S_PROT_RO)
 
 #define	L1_S_PROT_U_armv6	(L1_S_AP(AP_R) | L1_S_AP(AP_U))
@@ -754,12 +754,12 @@ extern void (*pmap_zero_page_func)(paddr_t);
 
 #define	L2_L_PROT_U_generic	(L2_AP(AP_U))
 #define	L2_L_PROT_W_generic	(L2_AP(AP_W))
-#define	L2_L_PROT_RO_generic	(0)
+#define	L2_L_PROT_RO_generic	(L2_AP(AP_R))
 #define	L2_L_PROT_MASK_generic	(L2_L_PROT_U|L2_L_PROT_W|L2_L_PROT_RO)
 
 #define	L2_L_PROT_U_xscale	(L2_AP(AP_U))
 #define	L2_L_PROT_W_xscale	(L2_AP(AP_W))
-#define	L2_L_PROT_RO_xscale	(0)
+#define	L2_L_PROT_RO_xscale	(L2_AP(AP_R))
 #define	L2_L_PROT_MASK_xscale	(L2_L_PROT_U|L2_L_PROT_W|L2_L_PROT_RO)
 
 #define	L2_L_PROT_U_armv6n	(L2_AP0(AP_R) | L2_AP0(AP_U))
@@ -780,12 +780,12 @@ extern void (*pmap_zero_page_func)(paddr_t);
 
 #define	L2_S_PROT_U_generic	(L2_AP(AP_U))
 #define	L2_S_PROT_W_generic	(L2_AP(AP_W))
-#define	L2_S_PROT_RO_generic	(0)
+#define	L2_S_PROT_RO_generic	(L2_AP(AP_R))
 #define	L2_S_PROT_MASK_generic	(L2_S_PROT_U|L2_S_PROT_W|L2_S_PROT_RO)
 
 #define	L2_S_PROT_U_xscale	(L2_AP0(AP_U))
 #define	L2_S_PROT_W_xscale	(L2_AP0(AP_W))
-#define	L2_S_PROT_RO_xscale	(0)
+#define	L2_S_PROT_RO_xscale	(L2_AP(AP_R))
 #define	L2_S_PROT_MASK_xscale	(L2_S_PROT_U|L2_S_PROT_W|L2_S_PROT_RO)
 
 #define	L2_S_PROT_U_armv6n	(L2_AP0(AP_R) | L2_AP0(AP_U))
@@ -924,8 +924,10 @@ extern void (*pmap_zero_page_func)(paddr_t);
 #define	L2_L_CACHE_MASK		L2_L_CACHE_MASK_armv6n
 #define	L2_S_CACHE_MASK		L2_S_CACHE_MASK_armv6n
 
-/* These prototypes make writeable mappings, while the other MMU types
- * make read-only mappings. */
+/*
+ * These prototypes make writeable mappings, while the other MMU types
+ * make read-only mappings.
+ */
 #define	L1_SS_PROTO		L1_SS_PROTO_armv6
 #define	L1_S_PROTO		L1_S_PROTO_armv6
 #define	L1_C_PROTO		L1_C_PROTO_armv6
@@ -1007,8 +1009,10 @@ extern void (*pmap_zero_page_func)(paddr_t);
 #define	L2_L_CACHE_MASK		L2_L_CACHE_MASK_armv7
 #define	L2_S_CACHE_MASK		L2_S_CACHE_MASK_armv7
 
-/* These prototypes make writeable mappings, while the other MMU types
- * make read-only mappings. */
+/*
+ * These prototypes make writeable mappings, while the other MMU types
+ * make read-only mappings.
+ */
 #define	L1_SS_PROTO		L1_SS_PROTO_armv7
 #define	L1_S_PROTO		L1_S_PROTO_armv7
 #define	L1_C_PROTO		L1_C_PROTO_armv7
@@ -1023,11 +1027,15 @@ extern void (*pmap_zero_page_func)(paddr_t);
  */
 #define l1pte_set_writable(pte)	(((pte) & ~L1_S_PROT_RO) | L1_S_PROT_W)
 #define l1pte_set_readonly(pte)	(((pte) & ~L1_S_PROT_W) | L1_S_PROT_RO)
-#define l2pte_set_writable(pte)	(((pte) & ~L2_S_PROT_RO) | L2_S_PROT_W)
-#define l2pte_set_readonly(pte)	(((pte) & ~L2_S_PROT_W) | L2_S_PROT_RO)
+
+#define l2pte_set_writable(pte)	(L2_S_PROT_W == L2_S_PROT_RO ? \
+    ((pte) | L2_S_PROT_W) : (((pte) & ~L2_S_PROT_RO) | L2_S_PROT_W))
+
+#define l2pte_set_readonly(pte)	(L2_S_PROT_W == L2_S_PROT_RO ? \
+    ((pte) & ~L2_S_PROT_RO) : (((pte) & ~L2_S_PROT_W) | L2_S_PROT_RO))
 
 #define l2pte_writable_p(pte)	(((pte) & L2_S_PROT_W) == L2_S_PROT_W && \
-				 (L2_S_PROT_RO == 0 || \
+				 (L2_S_PROT_W == L2_S_PROT_RO || \
 				  ((pte) & L2_S_PROT_RO) != L2_S_PROT_RO))
 
 /*
@@ -1035,13 +1043,16 @@ extern void (*pmap_zero_page_func)(paddr_t);
  * Note that the compiler will usually fold these at compile time.
  */
 #define	L1_S_PROT(ku, pr)	((((ku) == PTE_USER) ? L1_S_PROT_U : 0) | \
-				 (((pr) & VM_PROT_WRITE) ? L1_S_PROT_W : L1_S_PROT_RO))
+	(((pr) & VM_PROT_WRITE) ? L1_S_PROT_W :				  \
+	    (L1_S_PROT_W == L1_S_PROT_RO ? 0 : L1_S_PROT_RO)))
 
 #define	L2_L_PROT(ku, pr)	((((ku) == PTE_USER) ? L2_L_PROT_U : 0) | \
-				 (((pr) & VM_PROT_WRITE) ? L2_L_PROT_W : L2_L_PROT_RO))
+	(((pr) & VM_PROT_WRITE) ? L2_L_PROT_W :				  \
+	    (L2_L_PROT_W == L2_L_PROT_RO ? 0 : L2_L_PROT_RO)))
 
 #define	L2_S_PROT(ku, pr)	((((ku) == PTE_USER) ? L2_S_PROT_U : 0) | \
-				 (((pr) & VM_PROT_WRITE) ? L2_S_PROT_W : L2_S_PROT_RO))
+	(((pr) & VM_PROT_WRITE) ? L2_S_PROT_W :				  \
+	    (L2_S_PROT_W == L2_S_PROT_RO ? 0 : L2_S_PROT_RO)))
 
 /*
  * Macros to test if a mapping is mappable with an L1 SuperSection,
